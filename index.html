@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#111827">
+    <title>Qwanvas</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="stylesheet" href="/src/styles.css">
+  </head>
+  <body>
+    <div id="appShell" class="app-shell">
+      <section id="projectLauncher" class="project-launcher" aria-label="Project launcher">
+        <div class="launcher-card">
+          <p class="eyebrow">Offline slide editor</p>
+          <h1>Start with a local project</h1>
+          <p class="launcher-copy">Create or reopen a project. The canvas stays hidden until you choose what to work on.</p>
+          <label class="launcher-name-field">
+            <span>Project name</span>
+            <input id="launcherProjectName" type="text" placeholder="new project name" autocomplete="off" aria-describedby="launcherProjectNameError">
+          </label>
+          <div id="launcherProjectNameError" class="project-name-error" aria-live="polite"></div>
+          <div class="launcher-actions">
+            <button id="launcherCreateProjectBtn" class="primary" type="button" disabled>Create new project</button>
+            <label class="file-button">Import Project<input id="launcherImportProjectInput" type="file" accept=".html,.json,text/html,application/json"></label>
+          </div>
+          <section class="launcher-recents" aria-label="Recent projects">
+            <h2>Recent projects</h2>
+            <div id="launcherRecentProjects" class="launcher-recent-list" role="listbox" aria-label="Recent projects"></div>
+          </section>
+        </div>
+      </section>
+
+      <main class="workspace">
+        <header class="topbar">
+          <input id="projectName" class="project-name" aria-label="Project name">
+          <div class="actions">
+            <button id="commandPaletteBtn" title="Command palette Ctrl+P or ⌘P or /" aria-keyshortcuts="Control+P Meta+P /">Commands Ctrl+P or /</button>
+            <button id="undoBtn" title="Undo">Undo Ctrl/⌘Z</button>
+            <button id="redoBtn" title="Redo">Redo Ctrl/⌘Y</button>
+            <button id="addPageBtn">Add page</button>
+            <button id="exportPngBtn">Export PNG</button>
+            <button id="exportHtmlBtn">Export HTML</button>
+            <button id="exportJsonBtn">Export JSON</button>
+            <button id="exportCssBtn">Export CSS</button>
+          </div>
+        </header>
+
+        <div class="toolstrip" aria-label="Canvas tools">
+          <button data-tool="select" class="active">Select</button>
+          <button id="addTextBtn">Text T</button>
+          <button id="addShapeBtn">Shape</button>
+          <label class="file-button">Image<input id="imageInput" type="file" accept="image/*"></label>
+          <input id="backgroundImageInput" type="file" accept="image/*" hidden>
+        </div>
+
+        <section id="stageWrap" class="stage-wrap" tabindex="0" aria-label="Scrollable canvas viewport">
+          <div id="canvas" class="canvas" aria-label="Editable page canvas"></div>
+        </section>
+
+        <nav id="pageStrip" class="page-strip" aria-label="Pages"></nav>
+      </main>
+
+      <footer class="status-bar" aria-label="Application status">
+        <span id="statusProjectName" class="status-project-name" aria-label="Current project name">Qwanvas</span>
+        <span id="statusResolution" class="status-resolution">1080×1350</span>
+        <span id="statusPageCount" class="status-page-count" aria-label="Current page" aria-live="polite">Page 1/1</span>
+        <span class="status-zoom" aria-label="Canvas zoom controls">
+          <button id="zoomOutBtn" type="button" title="Zoom out Ctrl+-" aria-label="Zoom out">−</button>
+          <label class="status-zoom-input-label"><input id="statusZoomInput" class="status-zoom-input" type="number" min="25" max="300" step="1" inputmode="numeric" aria-label="Canvas zoom percentage"><span aria-hidden="true">%</span></label>
+          <button id="zoomInBtn" type="button" title="Zoom in Ctrl++" aria-label="Zoom in">+</button>
+        </span>
+        <span class="status-help">Command palette <kbd id="statusCommandShortcut">Ctrl+P or /</kbd> · Shortcuts <kbd id="statusHelpShortcut">Ctrl+H</kbd></span>
+        <button id="settingsMenuBtn" class="status-settings-btn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="settingsMenu" aria-keyshortcuts="Control+, Meta+," title="Settings Ctrl/⌘+,">Settings <kbd id="statusSettingsShortcut">Ctrl+,</kbd></button>
+      </footer>
+
+      <div id="settingsMenu" class="settings-menu" role="menu" aria-labelledby="settingsMenuBtn" hidden>
+        <button type="button" role="menuitem" data-settings-action="commands">
+          <span><strong>Command palette</strong><small>Run editor actions</small></span>
+          <kbd id="settingsCommandShortcut">Ctrl+P or /</kbd>
+        </button>
+        <button type="button" role="menuitem" data-settings-action="shortcuts">
+          <span><strong>Keyboard shortcuts</strong><small>Show available shortcuts</small></span>
+          <kbd>Ctrl+H</kbd>
+        </button>
+        <button type="button" role="menuitem" data-settings-action="reset-zoom">
+          <span><strong>Reset zoom</strong><small>Return canvas zoom to 100%</small></span>
+          <kbd>Ctrl+0</kbd>
+        </button>
+      </div>
+
+      <aside id="backgroundSettingsPanel" class="background-settings-panel" aria-label="Background settings" hidden>
+        <div class="panel-header">
+          <div>
+            <h2>Background settings</h2>
+            <p>Move and resize the page background image.</p>
+          </div>
+          <button id="closeBackgroundSettingsBtn" type="button" aria-label="Close background settings">Esc</button>
+        </div>
+        <button id="chooseBackgroundImageBtn" class="primary" type="button">Choose background image</button>
+        <p id="backgroundSettingsEmpty" class="muted">Choose an image to turn the background into an editable image layer.</p>
+        <div id="backgroundSettingsControls" hidden>
+          <div class="grid2">
+            <label class="field"><span>X</span><input id="backgroundXControl" type="number" min="-100" max="200" step="1"></label>
+            <label class="field"><span>Y</span><input id="backgroundYControl" type="number" min="-100" max="200" step="1"></label>
+            <label class="field"><span>Width</span><input id="backgroundWControl" type="number" min="1" max="300" step="1"></label>
+            <label class="field"><span>Height</span><input id="backgroundHControl" type="number" min="1" max="300" step="1"></label>
+          </div>
+          <div id="backgroundAspectLinkIndicator" class="aspect-link" aria-live="polite">🔒 Width and height are linked</div>
+          <label class="field check-field"><input id="backgroundAspectLockControl" type="checkbox"><span>Lock background ratio</span></label>
+          <div class="button-row">
+            <button id="resetBackgroundImageBtn" type="button">Fill canvas</button>
+            <button id="clearBackgroundImageBtn" type="button" class="danger">Remove image</button>
+          </div>
+        </div>
+      </aside>
+
+      <div id="inspectorResizeHandle" class="inspector-resize-handle" role="separator" aria-label="Resize inspector panel" tabindex="0" aria-orientation="vertical" aria-controls="elementInspector" aria-valuemin="280" aria-valuemax="720" aria-valuenow="420"></div>
+
+      <aside class="inspector" aria-label="Selected element inspector">
+        <h2>Inspector</h2>
+        <p id="emptyInspector" class="muted">Select an element to edit it.</p>
+        <div id="elementInspector" hidden>
+          <label class="field"><span>Text</span><textarea id="textControl" rows="2" aria-describedby="markdownHelp"></textarea></label>
+          <div class="grid2">
+            <label class="field"><span>X</span><input id="xControl" type="number" min="0" max="100"></label>
+            <label class="field"><span>Y</span><input id="yControl" type="number" min="0" max="100"></label>
+            <label class="field"><span>Width</span><input id="wControl" type="number" min="1" max="100"></label>
+            <label class="field"><span>Height</span><input id="hControl" type="number" min="1" max="100"></label>
+          </div>
+          <label class="field"><span>Rotate</span><input id="rotationControl" type="range" min="-180" max="180"></label>
+          <div id="cropFields" class="grid2">
+            <label class="field"><span>Crop top</span><input id="cropTopControl" type="range" min="0" max="90"></label>
+            <label class="field"><span>Crop bottom</span><input id="cropBottomControl" type="range" min="0" max="90"></label>
+          </div>
+          <label class="field"><span>Font size</span><input id="fontSizeControl" type="range" min="8" max="600"></label>
+          <label class="field"><span>Color</span><input id="colorControl" type="color"></label>
+          <label class="field"><span>Font</span><select id="fontControl"><option>Inter</option><option>Georgia</option><option>Arial</option><option>Courier New</option><option>Impact</option></select></label>
+          <p id="markdownHelp" class="field-note">Markdown supported: **bold**, *italic*, `code`, [links](https://example.com), lists, quotes, and headings.</p>
+          <div class="button-row">
+            <button id="backBtn">Back</button>
+            <button id="frontBtn">Front</button>
+          </div>
+          <button id="deleteBtn" class="danger">Delete element Del</button>
+        </div>
+      </aside>
+    </div>
+
+    <div id="templateModal" class="command-palette" hidden>
+      <div id="templateDialog" class="command-dialog" role="dialog" aria-modal="true" aria-labelledby="templateDialogTitle">
+        <h2 id="templateDialogTitle">Choose a template</h2>
+        <p id="templateDialogHint" class="command-hint">Use ↑/↓ and Enter, or click a template.</p>
+        <div id="templateList" class="command-list" role="listbox" aria-label="Project templates"></div>
+      </div>
+    </div>
+
+    <div id="commandPalette" class="command-palette" hidden>
+      <div id="commandDialog" class="command-dialog" role="dialog" aria-modal="true" aria-labelledby="commandPaletteTitle">
+        <h2 id="commandPaletteTitle">Command palette</h2>
+        <p class="command-hint">Run any slash command. Ctrl+P searches everything, and / opens this palette with / locked in place.</p>
+        <input id="commandSearch" type="search" autocomplete="off" placeholder="/command argument" aria-label="Slash command" title="Slash command" role="combobox" aria-controls="commandList" aria-expanded="false" aria-autocomplete="list">
+        <span hidden aria-label="Slash command"></span>
+        <input hidden placeholder="/command argument" aria-label="Slash command compatibility">
+        <div id="commandStatus" class="command-status" aria-live="polite"></div>
+        <div id="commandList" class="command-list" role="listbox" aria-label="Available commands"></div>
+      </div>
+    </div>
+
+    <div id="projectNameModal" class="command-palette" hidden>
+      <form id="projectNameDialog" class="command-dialog project-name-dialog" role="dialog" aria-modal="true" aria-labelledby="projectNameDialogTitle" novalidate>
+        <h2 id="projectNameDialogTitle">Name project</h2>
+        <p id="projectNameDialogHint" class="command-hint">Enter a unique project name.</p>
+        <label class="project-name-field" for="projectNameDialogInput">
+          <span>Project name</span>
+          <input id="projectNameDialogInput" type="text" autocomplete="off" required aria-describedby="projectNameDialogError">
+        </label>
+        <div id="projectNameDialogError" class="project-name-error" aria-live="polite"></div>
+        <div class="project-name-actions">
+          <button id="projectNameCancelBtn" type="button">Cancel Esc</button>
+          <button id="projectNameSubmitBtn" class="primary" type="submit">Save Enter</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="shortcutHelp" class="command-palette" hidden>
+      <div id="shortcutHelpDialog" class="command-dialog shortcut-dialog" role="dialog" aria-modal="true" aria-labelledby="shortcutHelpTitle">
+        <h2 id="shortcutHelpTitle">Keyboard shortcuts</h2>
+        <p class="command-hint">Minimal mode keeps the canvas clear. Use shortcuts to bring tools back when needed.</p>
+        <div class="shortcut-list" aria-label="Application shortcuts">
+          <div><span>Open command palette</span><kbd id="helpCommandShortcut">Ctrl+P or /</kbd></div>
+          <div><span>Open settings menu</span><kbd id="helpSettingsShortcut">Ctrl+,</kbd></div>
+          <div><span>Show keyboard shortcuts</span><kbd>Ctrl+H</kbd></div>
+          <div><span>Zoom in</span><kbd>Ctrl++</kbd> <kbd>Ctrl+wheel up</kbd></div>
+          <div><span>Zoom out</span><kbd>Ctrl+-</kbd> <kbd>Ctrl+wheel down</kbd></div>
+          <div><span>Reset zoom</span><kbd>Ctrl+0</kbd></div>
+          <div><span>Add text when nothing is selected</span><kbd>T</kbd></div>
+          <div><span>Align selected left / center / right</span><kbd>Alt+[</kbd> <kbd>Alt+\</kbd> <kbd>Alt+]</kbd></div>
+          <div><span>Align selected top / middle / bottom</span><kbd>Shift+Alt+[</kbd> <kbd>Shift+Alt+\</kbd> <kbd>Shift+Alt+]</kbd></div>
+          <div><span>Delete selected element</span><kbd>Del</kbd></div>
+        </div>
+        <button id="closeShortcutHelpBtn" class="shortcut-close">Close</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/app-entry.ts"></script>
+  </body>
+</html>
