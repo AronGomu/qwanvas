@@ -19,7 +19,7 @@ async function runCommand(page: Page, command: string) {
 
 async function addTextWithShortcut(page: Page, text: string) {
   await page.keyboard.press('t');
-  const editor = page.getByRole('textbox', { name: 'Edit markdown text on canvas' });
+  const editor = page.getByRole('textbox', { name: 'Edit text on canvas' });
   await expect(editor).toBeVisible();
   await editor.fill(text);
   await page.keyboard.press('Escape');

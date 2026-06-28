@@ -43,13 +43,13 @@ test('pwa canvas: global editing shortcuts respect selection and text entry', ()
   assert.doesNotMatch(app, /firstRunHelper|closeFirstRunHelper|maybeOpenFirstRunHelper|FIRST_RUN_HELPER_KEY/, 'introduction dialog state and wiring should be removed');
   assert.match(app, /event\.key === '\/'\)[\s\S]*?openCommandPalette\(\)/, 'slash should open the command palette with the locked slash prefix');
   assert.match(app, /function commandPaletteShortcutLabel\(\)[\s\S]*?shortcutLabel\('P'\)[\s\S]*?or \/`/, 'visible command palette shortcut labels should say or slash');
-  assert.match(app, /if \(shouldDeleteSelectedElement\(event\)\)[\s\S]*?\$\('deleteBtn'\)\.click\(\)[\s\S]*?if \(isTextEntryTarget\(event\.target\)\) return;/, 'Del should delete the selected element before text-entry targets block it');
-  assert.match(app, /function shouldDeleteSelectedElement\(event\)[\s\S]*?event\.target === els\.textControl && textInspectorAutoFocused/, 'Del should only override text-entry focus when inspector focus was explicitly marked as selection-driven');
-  assert.match(app, /els\.textControl\.addEventListener\('pointerdown', \(\) => textInspectorAutoFocused = false\)/, 'clicking into the inspector should preserve normal text editing Delete behavior');
-  assert.match(app, /if \(isTextEntryTarget\(event\.target\)\) return;[\s\S]*?const alignmentAction = alignmentActionFromEvent\(event\);[\s\S]*?alignSelectedElement\(alignmentAction\)/, 'alignment shortcuts should run only after text-entry targets are excluded');
+  assert.match(app, /if \(isTextEntryTarget\(event\.target\) && !shouldDeleteSelectedElement\(event\)\) return;[\s\S]*?if \(handleProjectPageNavigationKeydown\(event\)\) return;[\s\S]*?if \(shouldDeleteSelectedElement\(event\)\)/, 'text-entry targets should block global shortcuts, including Ctrl+Arrow page navigation, while preserving the delete fallback');
+  assert.match(app, /function shouldDeleteSelectedElement\(event\)[\s\S]*?event\.target === els\.textControl && textInspectorAutoFocused/, 'Del should only override hidden backing text control focus if it ever occurs');
+  assert.match(app, /els\.textControl\.addEventListener\('pointerdown', \(\) => textInspectorAutoFocused = false\)/, 'hidden backing text control should preserve normal text editing Delete behavior if focused programmatically');
+  assert.match(app, /if \(isTextEntryTarget\(event\.target\) && !shouldDeleteSelectedElement\(event\)\) return;[\s\S]*?const alignmentAction = alignmentActionFromEvent\(event\);[\s\S]*?alignSelectedElement\(alignmentAction\)/, 'alignment shortcuts should run only after text-entry targets are excluded');
   assert.match(app, /id: 'align-left'[\s\S]*?shortcut: 'Alt\+\['[\s\S]*?id: 'align-bottom'[\s\S]*?shortcut: 'Shift\+Alt\+\]'/, 'all selected-element alignment shortcuts should be registered');
   assert.doesNotMatch(app, /startStagePan|stagePan|is-panning/, 'canvas viewport should use native scrollbars instead of drag-to-pan');
-  assert.match(app, /if \(isTextEntryTarget\(event\.target\)\) return;[\s\S]*?event\.key\.toLowerCase\(\) === 't' && !selectedId[\s\S]*?\$\('addTextBtn'\)\.click\(\)/, 'T should stay blocked while typing and add text only when nothing is selected');
+  assert.match(app, /if \(isTextEntryTarget\(event\.target\) && !shouldDeleteSelectedElement\(event\)\) return;[\s\S]*?event\.key\.toLowerCase\(\) === 't' && !selectedId[\s\S]*?\$\('addTextBtn'\)\.click\(\)/, 'T should stay blocked while typing and add text only when nothing is selected');
   assert.match(readme, /Press \*\*Ctrl\+P\*\*/, 'README should document Ctrl+P command palette access');
   assert.match(readme, /or \*\*\/\*\* to open the command palette with `\/` already inserted/, 'README should document slash command palette access');
   assert.match(readme, /slash is locked in place/, 'README should document the locked slash prefix');
@@ -57,48 +57,43 @@ test('pwa canvas: global editing shortcuts respect selection and text entry', ()
   assert.match(readme, /\*\*Del\*\* to delete the selected element/);
 });
 
-test('pwa canvas: double-clicking text enters direct visible edit mode', () => {
+test('pwa canvas: clicking text enters direct visible edit mode', () => {
   const app = appSource();
   const css = file('src/styles.css');
 
-  assert.match(app, /node\.addEventListener\('dblclick', \(\) => \{ if \(element\.type === 'text'\) startCanvasTextEdit\(element\.id\); \}\)/);
-  assert.match(app, /if \(base\.type === 'text' && addedElementId\) requestAnimationFrame\(\(\) => startCanvasTextEdit\(addedElementId\)\)/, 'new text elements should immediately enter canvas text edit mode');
-  assert.match(app, /if \(event\.detail > 1 && element\?\.type === 'text'\) \{[\s\S]*?startCanvasTextEdit\(id\);[\s\S]*?return;[\s\S]*?\}/, 'double-click should enter text edit before drag setup can suppress it');
-  assert.match(app, /text\.contentEditable = element\.id === editingId \? 'true' : 'false'/);
-  assert.match(app, /range\.selectNodeContents\(text\)/, 'canvas text should be selected for immediate replacement typing');
+  assert.doesNotMatch(app, /addEventListener\('dblclick'/, 'text editing should no longer require double-click');
+  assert.match(app, /if \(base\.type === 'text' && addedElementId\) requestAnimationFrame\(\(\) => startCanvasTextEdit\(addedElementId\)\)/, 'new text elements should immediately enter text edit mode');
+  assert.match(app, /const textBodyClick = element\?\.type === 'text'[\s\S]*?pendingTextDrag = \{[\s\S]*?endPendingTextDrag[\s\S]*?startCanvasTextEdit\(pending\.id\)/, 'text pointerdown should defer between click-to-edit and drag-to-move');
+  assert.match(app, /text\.contentEditable = isEditingText \? 'true' : 'false'/);
+  assert.match(app, /text\.focus\(\{ preventScroll: true \}\)/, 'text edits should focus the canvas text directly by default');
   assert.match(app, /target\.isContentEditable/, 'global shortcuts should not steal canvas text keystrokes');
   assert.match(css, /caret-color: currentColor/, 'contenteditable canvas text should show a visible caret');
 });
 
-test('pwa canvas: markdown text renders as styled, escaped canvas and export HTML', () => {
+test('pwa canvas: text renders as escaped plain text on canvas and export HTML', () => {
   const app = appSource();
   const css = file('src/styles.css');
 
-  assert.match(app, /text\.innerHTML = markdownToHtml\(element\.text, \{ interactiveLinks: false \}\)/, 'canvas preview should render markdown as styled inert HTML');
-  assert.match(app, /text\.textContent = element\.text/, 'canvas edit mode should keep the raw markdown source editable');
-  assert.match(app, /\$\{markdownToHtml\(element\.text \|\| ''\)\}/, 'exported HTML should render markdown styling');
-  assert.match(app, /wrapText\(ctx, markdownToPlainText\(element\.text \|\| ''\)/, 'PNG export should strip markdown markers for readable text');
-  assert.match(app, /replace\(\/\\\*\\\*\(\[\^\*\]\+\)\\\*\\\*\/g, '<strong>\$1<\/strong>'\)/, 'bold markdown should become strong text');
-  assert.match(app, /<code>\$\{escapeHtml\(code\)\}<\/code>/, 'inline code markdown should become code text');
-  assert.match(app, /escapeHtml\(code\)/, 'code spans should be escaped before rendering');
-  assert.match(app, /safeLinkUrl\(url\)/, 'links should be protocol-filtered before rendering');
-  assert.match(app, /class="markdown-link"/, 'canvas preview links should be inert inside draggable elements');
-  assert.match(app, /aria-multiline', 'true'/, 'raw markdown canvas editor should expose multiline textbox semantics');
-  assert.match(css, /\.text-content h1/, 'canvas markdown blocks should have preview styles');
-  assert.match(css, /\.text-content code/, 'inline code should be visually distinct on canvas');
+  assert.match(app, /text\.textContent = element\.text \|\| ''/, 'canvas text should render as plain escaped text');
+  assert.match(app, /\$\{plainTextToHtml\(element\.text \|\| ''\)\}/, 'exported HTML should preserve plain text line breaks');
+  assert.match(app, /wrapText\(ctx, element\.text \|\| ''/, 'PNG export should use raw text without markdown transforms');
+  assert.doesNotMatch(app, /markdownToHtml|markdownInlineToHtml|markdownToPlainText|safeLinkUrl/, 'markdown handling should be removed from text rendering');
+  assert.match(app, /aria-multiline', 'true'/, 'canvas editor should expose multiline textbox semantics');
+  assert.doesNotMatch(css, /\.text-content h1|\.text-content code|markdown-link/, 'canvas markdown preview styles should be removed');
 });
 
-test('pwa canvas: text resize keeps selection geometry and text scale coherent', () => {
+test('pwa canvas: text resize changes the box independently from font size', () => {
   const app = appSource();
 
-  assert.match(app, /const TEXT_FONT_SIZE_MIN = 8;/, 'text resize should have a readable lower font-size bound');
-  assert.match(app, /const TEXT_FONT_SIZE_MAX = 600;/, 'text resize should allow very large canvas type');
-  assert.match(app, /if \(element\.type !== 'image'\) \{[\s\S]*?setElementSize\(element, \{ w: nextW, h: nextH, from: drag\.element \}\);[\s\S]*?return;[\s\S]*?\}/, 'dragging a text resize handle should resize through the shared font-size scaling path');
-  assert.match(app, /if \(element\.type === 'text'\) \{[\s\S]*?scaleTextFontForSize\(element, resizeFrom, source, \{ w, h, max \}\);[\s\S]*?return;[\s\S]*?\}/, 'text resize should persist dimensions through the text scaling path');
-  assert.match(app, /function scaleTextFontForSize\(element, from = element, source, target = element\) \{[\s\S]*?const requestedScale = source === 'w' \? widthScale : source === 'h' \? heightScale : Math\.max\(widthScale, heightScale\);[\s\S]*?element\.w = clamp\(startW \* scale, 3, max\);[\s\S]*?element\.h = clamp\(startH \* scale, 3, max\);[\s\S]*?element\.fontSize = Math\.round\(clamp\(startFontSize \* scale, TEXT_FONT_SIZE_MIN, TEXT_FONT_SIZE_MAX, startFontSize\)\);[\s\S]*?\}/, 'text resize should scale width, height, and font size together so selection borders match rendered text');
-  assert.doesNotMatch(app, /function resizeTextFont|pointerDistanceFromElementCenter/, 'text resize should not use a font-only special case');
-  assert.match(app, /source === 'w' \? widthScale : source === 'h' \? heightScale : Math\.max\(widthScale, heightScale\)/, 'text resize should not preserve a width-height ratio when deriving font size');
-  assert.match(app, /applyTextStyle\(node\.querySelector\('\.text-content'\), element\)/, 'live drag styling should update rendered text size before pointerup');
+  assert.match(app, /const TEXT_FONT_SIZE_MIN = 8;/, 'font-size controls should keep a readable lower bound');
+  assert.match(app, /const TEXT_FONT_SIZE_MAX = 600;/, 'font-size controls should allow very large canvas type');
+  assert.match(app, /if \(element\.type === 'text'\) \{[\s\S]*?element\.w = clamp\(w, 3, max\);[\s\S]*?element\.h = clamp\(h, 3, max\);[\s\S]*?return;[\s\S]*?\}/, 'text resize should update width and height without touching fontSize');
+  assert.doesNotMatch(app, /scaleTextFontForSize|resizeTextFont|pointerDistanceFromElementCenter/, 'text resize should not scale font size implicitly');
+  assert.match(app, /function resizeElementSide\(element, side, deltaW, deltaH\)/, 'side and corner handles should share anchored resize logic');
+  assert.match(app, /side === 'top-left'[\s\S]*?side === 'bottom-right'/, 'corner handles should support diagonal anchored resize directions');
+  assert.match(app, /element\.x = start\.x \+ \(element\.w - start\.w\) \/ 2[\s\S]*?element\.x = start\.x - \(element\.w - start\.w\) \/ 2[\s\S]*?element\.y = start\.y \+ \(element\.h - start\.h\) \/ 2[\s\S]*?element\.y = start\.y - \(element\.h - start\.h\) \/ 2/, 'resize should shift center so the opposite edge stays anchored');
+  assert.match(app, /updateSelectionToolbars\(\)/, 'floating toolbars should follow live drags');
+  assert.match(app, /applyTextStyle\(node\.querySelector\('\.text-content'\), element\)/, 'live drag styling should keep rendered text synced before pointerup');
 });
 
 test('pwa canvas: clicking elements selects them and reveals the inspector', () => {
@@ -106,13 +101,14 @@ test('pwa canvas: clicking elements selects them and reveals the inspector', () 
   const css = file('src/styles.css');
 
   assert.match(app, /function selectElement\(id, options = \{\}\) \{[\s\S]*?selectedId = id;[\s\S]*?renderInspector\(current\(\)\);[\s\S]*?\}/, 'selection should have one shared inspector-rendering path');
-  assert.match(app, /node\.addEventListener\('click', \(\) => selectElement\(element\.id\)\)/, 'canvas element clicks should select the element');
-  assert.match(app, /node\.focus\(\{ preventScroll: true \}\)/, 'pointer selection should immediately focus the canvas element');
+  assert.match(app, /if \(element\.type === 'text'\) startCanvasTextEdit\(element\.id\);[\s\S]*?else selectElement\(element\.id\);/, 'text element clicks should enter canvas edit mode while other elements select');
+  assert.doesNotMatch(app, /focusInspectorForDragMode\(mode\)/, 'pointer drag actions should not focus inspector controls');
   assert.match(app, /if \(changed\) \{[\s\S]*?render\(\);[\s\S]*?\}/, 'plain clicks should not re-render and break double-click targeting');
-  assert.match(app, /requestAnimationFrame\(\(\) => els\.canvas\.querySelector\(`\[data-id="\$\{CSS\.escape\(idToFocus\)\}"\]`\)\?\.focus\(\{ preventScroll: true \}\)\)/, 'pointer selection should restore focus after pointer completion');
+  assert.match(app, /selectedId \|\| ''/, 'pointer completion should target the selected canvas element');
+  assert.match(app, /focus\(\{ preventScroll: true \}\)/, 'pointer completion should keep focus on canvas rather than inspector controls');
   assert.match(app, /node\.addEventListener\('focus', \(\) => selectElement\(element\.id, \{ renderCanvasToo: false \}\)\)/, 'keyboard focus should select the element');
-  assert.doesNotMatch(app, /if \(mode === 'move' && element\?\.type === 'text'\) focusTextInspector\(\)/, 'clicking a text element body should keep focus on the canvas selection');
-  assert.match(app, /function focusTextInspector\(\) \{[\s\S]*?els\.textControl\.focus\(\{ preventScroll: true \}\);[\s\S]*?\}/, 'text inspector focus helper should remain available for explicit inspector flows');
+  assert.match(app, /function endPendingTextDrag\(event\) \{[\s\S]*?startCanvasTextEdit\(pending\.id\)/, 'clicking a text element body should focus text editing after pointer release');
+  assert.match(app, /function focusTextInspector\(\) \{[\s\S]*?startCanvasTextEdit\(element\.id\);[\s\S]*?\}/, 'legacy text focus helper should route to direct canvas text editing');
   assert.match(app, /els\.canvas\.querySelectorAll\('\.canvas-element'\)\.forEach\(\(node\) => \{[\s\S]*?node\.classList\.toggle\('selected', node\.dataset\.id === id\)/, 'shared selection should immediately mark newly clicked elements as selected');
   assert.match(css, /\.selected \.handle \{ display: block; \}/, 'selected text elements should reveal draggable handles as soon as the selected class is applied');
   assert.match(css, /--selectable-hover-outline: 2px dashed var\(--brand\)/, 'hovered canvas elements should reuse the brand selectable border token');
@@ -164,9 +160,13 @@ test('pwa canvas: image ratio lock and crop controls persist through render and 
   assert.doesNotMatch(html, /id="cropLeftControl"|id="cropRightControl"/, 'selected-element inspector should not expose left or right crop controls');
   assert.match(html, /id="cropTopControl" type="range" min="0" max="90"/, 'inspector should expose top crop control');
   assert.match(html, /id="cropBottomControl" type="range" min="0" max="90"/, 'inspector should expose bottom crop control');
-  assert.match(app, /els\.wControl\.closest\('\.field'\)\.hidden = isText/, 'text selection should hide width controls in favor of font size');
-  assert.match(app, /els\.hControl\.closest\('\.field'\)\.hidden = isText/, 'text selection should hide height controls in favor of font size');
-  assert.match(app, /els\.fontSizeControl\.closest\('\.field'\)\.hidden = !isText/, 'font size should be the text-specific sizing control');
+  assert.match(app, /els\.wControl\.closest\('\.field'\)\.hidden = false/, 'text selection should show width controls for text box sizing');
+  assert.match(app, /els\.hControl\.closest\('\.field'\)\.hidden = false/, 'text selection should show height controls for text box sizing');
+  assert.match(app, /els\.textControl\.hidden = true/, 'hidden backing text control should never become visible in the inspector');
+  assert.match(app, /els\.fontSizeControl\.closest\('\.field'\)\.hidden = !isText/, 'font size should remain the text-specific type size control');
+  assert.match(app, /els\.fontControl\.oninput = \(\) => handleFontInput\(\);/, 'font control should use custom draft input handling instead of saving every keystroke');
+  assert.match(app, /function isFontInputInvalid\(\) \{[\s\S]*?return Boolean\(value\) && !exactFontOption\(value\);[\s\S]*?\}/, 'font control should allow incorrect draft input and show validation state');
+  assert.match(app, /if \(document\.activeElement !== els\.fontControl\) els\.fontControl\.value = element\.font \|\| TEXT_DEFAULT\.font;/, 'rendering should not overwrite the active font input while typing');
   assert.match(app, /els\.cropFields\.hidden = !isImage/, 'crop controls should only appear for image selections');
   assert.match(app, /if \(isImage\) \{[\s\S]*?els\.cropTopControl\.value = imageCrop\(element, 'cropTop'\);[\s\S]*?els\.cropBottomControl\.value = imageCrop\(element, 'cropBottom'\);[\s\S]*?\}/, 'text selection should not read or sync crop controls');
   assert.match(app, /if \(isImage\) element\.aspectLocked = true;/, 'selected images should always be locked to their current ratio');

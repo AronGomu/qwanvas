@@ -121,27 +121,28 @@
         <h2>Inspector</h2>
         <p id="emptyInspector" class="muted">Select an element to edit it.</p>
         <div id="elementInspector" hidden>
-          <label class="field"><span>Text</span><textarea id="textControl" rows="2" aria-describedby="markdownHelp"></textarea></label>
+          <textarea id="textControl" hidden aria-hidden="true"></textarea>
+          <div class="field font-field"><label for="fontControl">Font</label><input id="fontControl" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="fontResults" aria-describedby="fontWarning"><div id="fontResults" class="font-results" role="listbox" aria-label="Available fonts" hidden></div><small id="fontWarning" class="font-warning" aria-live="polite" hidden>Choose one of the available fonts to apply it.</small></div>
           <div class="grid2">
             <label class="field"><span>X</span><input id="xControl" type="number" min="0" max="100"></label>
             <label class="field"><span>Y</span><input id="yControl" type="number" min="0" max="100"></label>
             <label class="field"><span>Width</span><input id="wControl" type="number" min="1" max="100"></label>
             <label class="field"><span>Height</span><input id="hControl" type="number" min="1" max="100"></label>
           </div>
-          <label class="field"><span>Rotate</span><input id="rotationControl" type="range" min="-180" max="180"></label>
+          <label class="field"><span>Rotate</span><span class="control-pair"><input id="rotationControl" type="range" min="-180" max="180"><input id="rotationNumberControl" type="number" min="-180" max="180" step="1" aria-label="Rotation degrees"></span></label>
           <div id="cropFields" class="grid2">
             <label class="field"><span>Crop top</span><input id="cropTopControl" type="range" min="0" max="90"></label>
             <label class="field"><span>Crop bottom</span><input id="cropBottomControl" type="range" min="0" max="90"></label>
           </div>
-          <label class="field"><span>Font size</span><input id="fontSizeControl" type="range" min="8" max="600"></label>
-          <label class="field"><span>Color</span><input id="colorControl" type="color"></label>
-          <label class="field"><span>Font</span><select id="fontControl"><option>Inter</option><option>Georgia</option><option>Arial</option><option>Courier New</option><option>Impact</option></select></label>
-          <p id="markdownHelp" class="field-note">Markdown supported: **bold**, *italic*, `code`, [links](https://example.com), lists, quotes, and headings.</p>
-          <div class="button-row">
-            <button id="backBtn">Back</button>
-            <button id="frontBtn">Front</button>
-          </div>
-          <button id="deleteBtn" class="danger">Delete element Del</button>
+          <label class="field"><span>Font size</span><span class="control-pair"><input id="fontSizeSliderControl" type="range" min="8" max="200" aria-label="Font size slider"><select id="fontSizeControl" aria-label="Font size preset"><option value="14">14</option><option value="18">18</option><option value="20">20</option><option value="24">24</option><option value="28">28</option><option value="32">32</option><option value="36">36</option><option value="48">48</option><option value="56">56</option><option value="70">70</option><option value="96">96</option><option value="128">128</option></select></span></label>
+          <div class="field color-field"><span>Color</span><div class="color-controls" aria-label="Text color presets"><button type="button" data-color="#111827" style="--swatch:#111827" aria-label="Black"></button><button type="button" data-color="#ffffff" style="--swatch:#ffffff" aria-label="White"></button><button type="button" data-color="#ef4444" style="--swatch:#ef4444" aria-label="Red"></button><button type="button" data-color="#f59e0b" style="--swatch:#f59e0b" aria-label="Amber"></button><button type="button" data-color="#22c55e" style="--swatch:#22c55e" aria-label="Green"></button><button type="button" data-color="#3b82f6" style="--swatch:#3b82f6" aria-label="Blue"></button><input id="colorControl" type="color" aria-label="Custom text color"></div></div>
+          <div class="field"><span>Layer order</span><div class="button-row layer-actions" role="group" aria-label="Layer order">
+            <button id="backmostBtn" type="button" title="Send to back" aria-label="Send to back">⇊</button>
+            <button id="backBtn" type="button" title="Send backward" aria-label="Send backward">↓</button>
+            <button id="frontBtn" type="button" title="Bring forward" aria-label="Bring forward">↑</button>
+            <button id="frontmostBtn" type="button" title="Bring to front" aria-label="Bring to front">⇈</button>
+          </div></div>
+          <button id="deleteBtn" class="danger inspector-delete" title="Delete element" aria-label="Delete element">🗑</button>
         </div>
       </aside>
     </div>

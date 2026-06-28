@@ -1,3 +1,213 @@
+function integerFontSize(value) {
+  return Math.round(clamp(value, TEXT_FONT_SIZE_MIN, TEXT_FONT_SIZE_MAX, TEXT_DEFAULT.fontSize));
+}
+
+function syncFontSizeControls(value) {
+  const fontSize = integerFontSize(value);
+  const optionValue = String(fontSize);
+  if (![...els.fontSizeControl.options].some((option) => option.value === optionValue)) {
+    const option = document.createElement('option');
+    option.value = optionValue;
+    option.textContent = optionValue;
+    els.fontSizeControl.append(option);
+  }
+  els.fontSizeControl.value = optionValue;
+  els.fontSizeSliderControl.value = optionValue;
+}
+
+function normalizedFontQuery(value) {
+  return String(value || '').trim().toLocaleLowerCase();
+}
+
+function fontFuzzyScore(font, query) {
+  const normalizedFont = font.toLocaleLowerCase();
+  const normalizedQuery = normalizedFontQuery(query);
+  if (!normalizedQuery) return 0;
+  if (normalizedFont === normalizedQuery) return -100;
+  if (normalizedFont.startsWith(normalizedQuery)) return -50 + normalizedFont.length - normalizedQuery.length;
+  if (normalizedFont.includes(normalizedQuery)) return normalizedFont.indexOf(normalizedQuery);
+  let score = 0;
+  let cursor = 0;
+  for (const char of normalizedQuery) {
+    const index = normalizedFont.indexOf(char, cursor);
+    if (index === -1) return Infinity;
+    score += index - cursor + 1;
+    cursor = index + 1;
+  }
+  return score + normalizedFont.length;
+}
+
+function fontResults(query = els.fontControl.value) {
+  return FONT_OPTIONS
+    .map((font, order) => ({ font, order, score: fontFuzzyScore(font, query) }))
+    .filter((result) => Number.isFinite(result.score))
+    .sort((a, b) => a.score - b.score || a.order - b.order)
+    .map((result) => result.font);
+}
+
+function exactFontOption(value) {
+  const normalized = normalizedFontQuery(value);
+  return FONT_OPTIONS.find((font) => font.toLocaleLowerCase() === normalized) || null;
+}
+
+function fontOptionId(index) {
+  return `font-option-${index}`;
+}
+
+function openFontResults() {
+  fontResultIndex = -1;
+  renderFontResults();
+}
+
+function closeFontResults() {
+  els.fontResults.hidden = true;
+  els.fontControl.setAttribute('aria-expanded', 'false');
+  fontResultIndex = -1;
+}
+
+function handleFontInput() {
+  fontResultIndex = -1;
+  const exact = exactFontOption(els.fontControl.value);
+  previewSelectedFont(exact || selected(current())?.font || TEXT_DEFAULT.font);
+  renderFontResults();
+}
+
+function renderFontResults() {
+  const results = fontResults();
+  els.fontResults.innerHTML = '';
+  els.fontResults.hidden = !results.length;
+  els.fontControl.setAttribute('aria-expanded', results.length ? 'true' : 'false');
+  syncFontValidation();
+  if (fontResultIndex >= results.length) fontResultIndex = results.length - 1;
+  for (const [index, font] of results.entries()) {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.id = fontOptionId(index);
+    option.className = `font-result ${index === fontResultIndex ? 'active' : ''}`;
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', index === fontResultIndex ? 'true' : 'false');
+    option.tabIndex = -1;
+    option.style.fontFamily = font;
+    option.textContent = font;
+    option.onpointerenter = () => previewFontResult(index);
+    option.onpointerdown = (event) => event.preventDefault();
+    option.onclick = () => commitFont(font);
+    option.onkeydown = handleFontResultKeydown;
+    els.fontResults.append(option);
+  }
+  syncFontActiveResult();
+}
+
+function isFontInputInvalid() {
+  const value = normalizedFontQuery(els.fontControl.value);
+  return Boolean(value) && !exactFontOption(value);
+}
+
+function syncFontValidation() {
+  const invalid = isFontInputInvalid();
+  if (invalid) {
+    const typedFont = els.fontControl.value.trim();
+    const currentFont = selected(current())?.font || TEXT_DEFAULT.font;
+    els.fontControl.setAttribute('aria-invalid', 'true');
+    els.fontWarning.textContent = `“${typedFont}” is not available. The text element is still using ${currentFont}.`;
+  } else {
+    els.fontControl.removeAttribute('aria-invalid');
+  }
+  els.fontWarning.hidden = !invalid;
+}
+
+function syncFontActiveResult() {
+  els.fontResults.querySelectorAll('.font-result').forEach((option, index) => {
+    const active = index === fontResultIndex;
+    option.classList.toggle('active', active);
+    option.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+}
+
+function previewFontResult(index) {
+  const results = fontResults();
+  if (!results[index]) return;
+  fontResultIndex = index;
+  syncFontActiveResult();
+  previewSelectedFont(results[index]);
+}
+
+function previewSelectedFont(font) {
+  const element = selected(current());
+  if (!element || element.type !== 'text') return;
+  const text: any = els.canvas.querySelector(`[data-id="${CSS.escape(element.id)}"] .text-content`);
+  if (text) applyTextStyle(text, { ...element, font });
+}
+
+function commitFont(font) {
+  if (!FONT_OPTIONS.includes(font as any)) return;
+  els.fontControl.value = font;
+  closeFontResults();
+  patchSelected((el) => { if (el.type === 'text') el.font = font; });
+  requestAnimationFrame(() => els.fontControl.focus({ preventScroll: true }));
+}
+
+function handleFontInputKeydown(event) {
+  const results = fontResults();
+  if (event.key === 'ArrowDown' && results.length) {
+    event.preventDefault();
+    if (els.fontResults.hidden) renderFontResults();
+    previewFontResult(0);
+    (els.fontResults.querySelector(`#${fontOptionId(0)}`) as HTMLElement)?.focus({ preventScroll: true });
+    return;
+  }
+  if (event.key === 'Enter') {
+    const font = exactFontOption(els.fontControl.value) || (fontResultIndex >= 0 ? results[fontResultIndex] : null);
+    if (font) { event.preventDefault(); commitFont(font); }
+    return;
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    const font = selected(current())?.font || TEXT_DEFAULT.font;
+    els.fontControl.value = font;
+    previewSelectedFont(font);
+    syncFontValidation();
+    closeFontResults();
+  }
+}
+
+function handleFontResultKeydown(event) {
+  const results = fontResults();
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    previewFontResult(Math.min(results.length - 1, fontResultIndex + 1));
+    (els.fontResults.querySelector(`#${fontOptionId(fontResultIndex)}`) as HTMLElement)?.focus({ preventScroll: true });
+    return;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (fontResultIndex <= 0) {
+      fontResultIndex = -1;
+      syncFontActiveResult();
+      previewSelectedFont(exactFontOption(els.fontControl.value) || selected(current())?.font || TEXT_DEFAULT.font);
+      els.fontControl.focus({ preventScroll: true });
+      return;
+    }
+    previewFontResult(fontResultIndex - 1);
+    (els.fontResults.querySelector(`#${fontOptionId(fontResultIndex)}`) as HTMLElement)?.focus({ preventScroll: true });
+    return;
+  }
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    const font = results[fontResultIndex];
+    if (font) commitFont(font);
+  }
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    const font = selected(current())?.font || TEXT_DEFAULT.font;
+    els.fontControl.value = font;
+    previewSelectedFont(font);
+    syncFontValidation();
+    els.fontControl.focus({ preventScroll: true });
+    closeFontResults();
+  }
+}
+
 function wire() {
   els.launcherProjectName.addEventListener('input', renderLauncher);
   els.launcherProjectName.addEventListener('keydown', handleLauncherProjectNameKeydown);
@@ -77,9 +287,18 @@ function wire() {
   els.canvas.addEventListener('dragover', handleCanvasDrag);
   els.canvas.addEventListener('dragleave', handleCanvasDragLeave);
   els.canvas.addEventListener('drop', handleCanvasDrop);
-  $('deleteBtn').onclick = () => selectedId && mutate((project) => { activePage(project).elements = activePage(project).elements.filter((el) => el.id !== selectedId); selectedId = null; editingId = null; editBefore = null; saveUiState('deleteElement'); });
+  els.canvas.addEventListener('pointerdown', (event) => { if (event.target === els.canvas) clearElementSelection(); });
+  els.stageWrap.addEventListener('pointerdown', (event) => { if (event.target === els.stageWrap) clearElementSelection(); });
+  els.appShell.addEventListener('pointerdown', (event) => {
+    const target = event.target as Element;
+    if (target.closest('.inspector, .inspector-resize-handle, .canvas-element, .selection-toolbar, .canvas, .background-settings-panel')) return;
+    clearElementSelection();
+  });
+  $('deleteBtn').onclick = confirmDeleteSelectedElement;
+  $('backmostBtn').onclick = () => patchSelected((el) => el.z = 0);
   $('backBtn').onclick = () => patchSelected((el) => el.z = Math.max(0, (el.z || 1) - 1));
   $('frontBtn').onclick = () => patchSelected((el) => el.z = (el.z || 1) + 1);
+  $('frontmostBtn').onclick = () => patchSelected((el) => el.z = topElementZ() + 1);
   $('exportHtmlBtn').onclick = () => current() && download(current().fileName || savedProjectFileName(current()), projectToHtml(current()), 'text/html');
   $('exportJsonBtn').onclick = () => current() && download((current().fileName || savedProjectFileName(current())).replace(/\.html$/, '.json'), projectToJson(current()), 'application/json');
   $('exportCssBtn').onclick = () => current() && download((current().fileName || savedProjectFileName(current())).replace(/\.html$/, '.css'), projectToCss(), 'text/css');
@@ -89,13 +308,22 @@ function wire() {
   els.projectName.onchange = () => renameCurrentProject(els.projectName.value);
   els.textControl.addEventListener('pointerdown', () => textInspectorAutoFocused = false);
   els.textControl.addEventListener('keydown', (event) => { if (event.key !== 'Delete' && event.key !== 'Del') textInspectorAutoFocused = false; });
-  ['text', 'x', 'y', 'rotation', 'fontSize', 'color', 'font'].forEach((name) => {
+  ['text', 'x', 'y', 'rotation', 'fontSize', 'color'].forEach((name) => {
     const control = $(`${name}Control`);
     control.oninput = () => patchSelected((el) => {
-      const value = control.type === 'number' || control.type === 'range' ? Number(control.value) : control.value;
+      const value = name === 'fontSize' ? integerFontSize(control.value) : control.type === 'number' || control.type === 'range' ? Number(control.value) : control.value;
       el[name] = value;
+      if (name === 'rotation') els.rotationNumberControl.value = value;
+      if (name === 'fontSize') syncFontSizeControls(value);
     });
   });
+  els.fontControl.onfocus = () => openFontResults();
+  els.fontControl.oninput = () => handleFontInput();
+  els.fontControl.onkeydown = handleFontInputKeydown;
+  els.fontControl.onblur = () => setTimeout(() => { if (document.activeElement !== els.fontControl && !els.fontResults.contains(document.activeElement)) closeFontResults(); }, 0);
+  els.rotationNumberControl.oninput = () => patchSelected((el) => { el.rotation = clamp(Number(els.rotationNumberControl.value), -180, 180, 0); els.rotationControl.value = el.rotation; });
+  els.fontSizeSliderControl.oninput = () => patchSelected((el) => { el.fontSize = integerFontSize(els.fontSizeSliderControl.value); syncFontSizeControls(el.fontSize); });
+  document.querySelectorAll('[data-color]').forEach((button: any) => button.addEventListener('click', () => patchSelected((el) => { el.color = button.dataset.color; els.colorControl.value = el.color; })));
   ['cropTop', 'cropBottom'].forEach((name) => {
     const control = $(`${name}Control`);
     control.oninput = () => patchSelected((el) => setImageCropControl(el, name, Number(control.value)));
@@ -110,12 +338,12 @@ function wire() {
     if (!els.backgroundSettingsPanel.hidden && event.key === 'Escape') { event.preventDefault(); closeBackgroundSettings(); return; }
     if (!els.settingsMenu.hidden && event.key === 'Escape') { event.preventDefault(); closeSettingsMenu(); return; }
     if (!els.commandPalette.hidden || !els.projectNameModal.hidden || !els.shortcutHelp.hidden || !els.settingsMenu.hidden || !els.templateModal.hidden) return;
+    if (isTextEntryTarget(event.target) && !shouldDeleteSelectedElement(event)) return;
     if ((event.ctrlKey || event.metaKey) && event.key === ',') { event.preventDefault(); toggleSettingsMenu(); return; }
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'p') { event.preventDefault(); openCommandPalette(); return; }
     if (event.ctrlKey && event.key.toLowerCase() === 'h') { event.preventDefault(); openShortcutHelp(); return; }
     if (handleProjectPageNavigationKeydown(event)) return;
     if (shouldDeleteSelectedElement(event)) { event.preventDefault(); $('deleteBtn').click(); return; }
-    if (isTextEntryTarget(event.target)) return;
     if ((event.ctrlKey || event.metaKey) && (event.key === '+' || event.key === '=')) { event.preventDefault(); setCanvasZoom(canvasZoom + ZOOM_STEP); return; }
     if ((event.ctrlKey || event.metaKey) && event.key === '-') { event.preventDefault(); setCanvasZoom(canvasZoom - ZOOM_STEP); return; }
     if ((event.ctrlKey || event.metaKey) && event.key === '0') { event.preventDefault(); setCanvasZoom(1); return; }

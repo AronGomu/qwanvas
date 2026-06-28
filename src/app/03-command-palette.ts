@@ -363,7 +363,7 @@ function runCommand(command, query) {
 }
 
 function addTextCommand(query) {
-  const text = query.replace(/^(add-)?text\s*/i, '').trim().replace(/[_-]+/g, ' ') || '**Double-click** to edit';
+  const text = query.replace(/^(add-)?text\s*/i, '').trim().replace(/[_-]+/g, ' ') || TEXT_DEFAULT.text;
   addElement({ ...TEXT_DEFAULT, text });
 }
 

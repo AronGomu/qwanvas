@@ -22,6 +22,7 @@ test('pwa shell: required offline editor assets and controls stay wired', () => 
   }
 
   const html = file('index.html');
+  const app = appSource();
   assert.match(html, /<script type="module" src="\/src\/app-entry\.ts"><\/script>/);
   assert.match(html, /Import Project/);
   assert.match(html, /Export HTML/);
@@ -50,15 +51,21 @@ test('pwa shell: required offline editor assets and controls stay wired', () => 
   assert.match(html, /placeholder="\/command argument"/);
   assert.match(html, /id="commandSearch"/);
   assert.match(html, /<button id="addTextBtn">Text T<\/button>/);
-  assert.match(html, /<button id="deleteBtn" class="danger">Delete element Del<\/button>/);
+  assert.match(html, /<button id="deleteBtn" class="danger inspector-delete"[^>]*aria-label="Delete element"[^>]*>🗑<\/button>/);
   assert.match(html, /Add text when nothing is selected/);
   assert.match(html, /Align selected left \/ center \/ right/);
   assert.match(html, /Align selected top \/ middle \/ bottom/);
   assert.match(html, /Delete selected element<\/span><kbd>Del<\/kbd>/);
   assert.doesNotMatch(html, /backgroundControl|Apply to all pages/, 'page background controls should not live in the selected-element inspector');
-  assert.match(html, /Markdown supported/);
-  assert.match(html, /textarea id="textControl" rows="2" aria-describedby="markdownHelp"/);
-  assert.match(html, /id="markdownHelp" class="field-note"/);
+  assert.doesNotMatch(html, /Markdown supported|markdownHelp/);
+  assert.match(html, /textarea id="textControl" hidden aria-hidden="true"/);
+  assert.match(html, /<label for="fontControl">Font<\/label><input id="fontControl"/);
+  assert.match(html, /id="fontResults" class="font-results" role="listbox"/);
+  assert.match(html, /id="fontWarning" class="font-warning"/);
+  assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'Times New Roman'[\s\S]*?\] as const;/);
+  assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'Verdana'[\s\S]*?\] as const;/);
+  assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'Consolas'[\s\S]*?\] as const;/);
+  assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'Roboto'[\s\S]*?\] as const;/);
   assert.doesNotMatch(html, /Generate draft|ideaInput|boldBtn|italicBtn/, 'AI prompt flow and legacy text-style buttons should remain outside the app');
 
   const css = file('src/styles.css');

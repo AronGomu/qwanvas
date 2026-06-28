@@ -24,7 +24,7 @@ test('pwa app: local project lifecycle and portable import/export contracts are 
     'RecentProject', 'openRecentProjectPicker', 'recentProjects', 'reopenRecentProject', 'projectNameError', 'syncProjectFileMetadata', 'savedProjectFileName',
     'BLANK_BACKGROUND_ID', 'BACKGROUNDS', 'chooseBackgroundCommand', 'setPageBackground',
     'GUIDE_GRID_DEFAULT', 'setGuideGridCommand', 'pageGuideGrid', 'normalizeGuideGrid',
-    'markdownToHtml', 'markdownInlineToHtml', 'markdownToPlainText', 'safeLinkUrl',
+    'plainTextToHtml',
     'exportPng', 'openSettingsMenu', 'closeSettingsMenu', 'handleSettingsMenuKeydown', 'commitStatusZoomInput', 'handleStatusZoomInputKeydown', 'commandPaletteShortcutLabel', 'openProjectNameDialog', 'projectNameError', 'uniqueProjectName', 'ALIGNMENT_ACTIONS', 'alignSelectedElement', 'alignmentActionFromEvent', 'renderSelectionToolbar', 'updateProjectUrl', 'projectUrlPath', 'escapeHtml', 'escapeAttr', 'escapeScriptJson',
   ]) assert.match(app, new RegExp(token.replace(/[()]/g, '\\$&')), `missing ${token}`);
   assert.match(app, /const PROJECT_FILE_EXTENSION = 'html'/, 'project save files should default to HTML project files');

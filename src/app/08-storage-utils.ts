@@ -73,11 +73,13 @@ function normalizeStoredElement(element) {
   };
   if (stored.type === 'text') {
     stored.text = String(element.text || '');
-    stored.fontSize = clamp(element.fontSize, TEXT_FONT_SIZE_MIN, TEXT_FONT_SIZE_MAX, TEXT_DEFAULT.fontSize);
+    stored.fontSize = integerFontSize(element.fontSize);
     stored.color = String(element.color || TEXT_DEFAULT.color);
     stored.font = String(element.font || TEXT_DEFAULT.font);
     stored.bold = Boolean(element.bold);
     stored.italic = Boolean(element.italic);
+    stored.underline = Boolean(element.underline);
+    stored.textAlign = ['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : TEXT_DEFAULT.textAlign;
   }
   if (stored.type === 'shape') stored.color = String(element.color || SHAPE_DEFAULT.color);
   if (stored.type === 'image') return { ...stored, src: safeImageSrc(element.src || ''), ...normalizeImageSettings(element, stored) };

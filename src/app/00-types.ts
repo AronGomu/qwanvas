@@ -52,6 +52,8 @@ interface TextElement extends BaseElement {
   font: string;
   bold: boolean;
   italic: boolean;
+  underline?: boolean;
+  textAlign?: 'left' | 'center' | 'right';
 }
 
 interface ShapeElement extends BaseElement {

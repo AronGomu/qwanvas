@@ -11,17 +11,21 @@ test('project launcher keyboard moves between name input and recent projects', a
   await input.fill('Keyboard Recent');
   await page.keyboard.press('Enter');
   await expect(page.getByRole('dialog', { name: 'Choose a template' })).toBeVisible();
-  await page.keyboard.press('Enter');
+  await page.getByRole('option').first().click();
   await expect(page.getByLabel('Current project name')).toHaveText('Keyboard Recent');
 
   await expect(page).toHaveURL(/\/keyboard-recent$/);
   await page.goto('/');
   await expect(page.getByLabel('Project launcher')).toBeVisible();
-  await expect(page.getByRole('option', { name: /Keyboard Recent/ })).toBeVisible();
+  const recentProject = page.getByRole('option', { name: /Keyboard Recent/ });
+  await expect(recentProject).toBeVisible();
 
   await input.focus();
+  await expect(recentProject).toHaveCSS('outline-style', 'none');
+
   await page.keyboard.press('ArrowDown');
-  await expect(page.getByRole('option', { name: /Keyboard Recent/ })).toBeFocused();
+  await expect(recentProject).toBeFocused();
+  await expect(recentProject).toHaveCSS('outline-style', 'solid');
 
   await page.keyboard.press('ArrowUp');
   await expect(input).toBeFocused();

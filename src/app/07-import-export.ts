@@ -53,7 +53,8 @@ body { margin: 0; min-height: 100vh; display: grid; gap: 2rem; place-items: cent
 .qwanvas-background-image { position: absolute; left: calc(var(--x) * 1%); top: calc(var(--y) * 1%); width: calc(var(--w) * 1%); height: calc(var(--h) * 1%); transform: translate(-50%, -50%) rotate(calc(var(--r) * 1deg)); overflow: hidden; z-index: 0; }
 .qwanvas-background-image img { width: var(--crop-img-w, 100%); height: var(--crop-img-h, 100%); margin-left: var(--crop-offset-x, 0%); margin-top: var(--crop-offset-y, 0%); object-fit: fill; display: block; }
 .qwanvas-element { position: absolute; left: calc(var(--x) * 1%); top: calc(var(--y) * 1%); width: calc(var(--w) * 1%); height: calc(var(--h) * 1%); transform: translate(-50%, -50%) rotate(calc(var(--r) * 1deg)); display: grid; place-items: center; color: var(--element-color, white); z-index: var(--z, 1); }
-.qwanvas-text { width: 100%; white-space: pre-wrap; line-height: 1.05; overflow-wrap: anywhere; text-align: center; font-family: var(--font, Inter, sans-serif); font-size: calc(var(--font-size, 42) * .095vw); font-weight: var(--font-weight, 500); font-style: var(--font-style, normal); }
+.qwanvas-element[data-type="text"] { place-items: start stretch; align-items: start; }
+.qwanvas-text { width: 100%; align-self: start; justify-self: stretch; white-space: pre-wrap; line-height: 1.05; overflow-wrap: anywhere; text-align: var(--text-align, left); text-decoration: var(--text-decoration, none); font-family: var(--font, Inter, sans-serif); font-size: calc(var(--font-size, 42) * .095vw); font-weight: var(--font-weight, 500); font-style: var(--font-style, normal); }
 .qwanvas-text h1, .qwanvas-text h2, .qwanvas-text h3, .qwanvas-text h4, .qwanvas-text h5, .qwanvas-text h6, .qwanvas-text p { margin: 0 0 .25em; }
 .qwanvas-text h1 { font-size: 1.55em; } .qwanvas-text h2 { font-size: 1.35em; } .qwanvas-text h3 { font-size: 1.18em; }
 .qwanvas-text ul, .qwanvas-text ol { display: inline-block; margin: .15em 0; padding-left: 1.25em; text-align: left; }
@@ -87,8 +88,8 @@ function renderExportBackgroundImage(backgroundImage) {
 function renderExportElement(element) {
   const style = `--x:${element.x};--y:${element.y};--w:${element.w};--h:${element.h};--r:${element.rotation || 0};--z:${element.z || 1};--element-color:${element.color || '#fff'};${cropStyleVars(element)}`;
   if (element.type === 'text') {
-    const textStyle = `--font-size:${element.fontSize || 42};--font:${escapeAttr(element.font || 'Inter')};--font-weight:${element.bold ? 800 : 500};--font-style:${element.italic ? 'italic' : 'normal'}`;
-    return `        <div class="qwanvas-element" data-element-id="${escapeAttr(element.id)}" data-type="text" style="${escapeAttr(style)}"><div class="qwanvas-text" style="${textStyle}">${markdownToHtml(element.text || '')}</div></div>`;
+    const textStyle = `--font-size:${element.fontSize || 42};--font:${escapeAttr(element.font || 'Inter')};--font-weight:${element.bold ? 800 : 500};--font-style:${element.italic ? 'italic' : 'normal'};--text-decoration:${element.underline ? 'underline' : 'none'};--text-align:${element.textAlign || TEXT_DEFAULT.textAlign}`;
+    return `        <div class="qwanvas-element" data-element-id="${escapeAttr(element.id)}" data-type="text" style="${escapeAttr(style)}"><div class="qwanvas-text" style="${textStyle}">${plainTextToHtml(element.text || '')}</div></div>`;
   }
   if (element.type === 'image') {
     return `        <div class="qwanvas-element qwanvas-image" data-element-id="${escapeAttr(element.id)}" data-type="image" style="${escapeAttr(style)}"><img alt="" src="${escapeAttr(safeImageSrc(element.src))}"></div>`;
@@ -159,11 +160,13 @@ function normalizeImportedElement(element) {
     h: canvasPercent(element.h ?? element.height, 1, 100, 12),
     rotation: clamp(element.rotation, -360, 360, 0),
     z: Math.trunc(clamp(element.z, 0, 999, 1)),
-    fontSize: clamp(element.fontSize, TEXT_FONT_SIZE_MIN, TEXT_FONT_SIZE_MAX, TEXT_DEFAULT.fontSize),
+    fontSize: integerFontSize(element.fontSize),
     color: String(element.color || '#ffffff'),
     font: String(element.font || 'Inter'),
     bold: Boolean(element.bold),
     italic: Boolean(element.italic),
+    underline: Boolean(element.underline),
+    textAlign: ['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : TEXT_DEFAULT.textAlign,
   };
   if (imported.type === 'image') Object.assign(imported, normalizeImageSettings(element, imported));
   return imported;
@@ -220,7 +223,9 @@ async function drawElement(ctx, element, size = CANVAS_SIZE_DEFAULT) {
   if (element.type === 'text') {
     const fontScale = size.width / CANVAS_SIZE_DEFAULT.width;
     ctx.fillStyle = element.color || '#fff'; ctx.font = `${element.italic ? 'italic ' : ''}${element.bold ? '800' : '500'} ${element.fontSize * 2.1 * fontScale}px ${element.font || 'Inter'}`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; wrapText(ctx, markdownToPlainText(element.text || ''), 0, 0, w, element.fontSize * 2.35 * fontScale);
+    const textAlign = element.textAlign || TEXT_DEFAULT.textAlign;
+    const textX = textAlign === 'left' ? -w / 2 : textAlign === 'right' ? w / 2 : 0;
+    ctx.textAlign = textAlign; ctx.textBaseline = 'middle'; wrapText(ctx, element.text || '', textX, 0, w, element.fontSize * 2.35 * fontScale);
   }
   ctx.restore();
 }
@@ -244,90 +249,6 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
   lines.forEach((line, i) => ctx.fillText(line, x, start + i * lineHeight));
 }
 
-function markdownToHtml(markdown, options: any = {}) {
-  const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
-  const interactiveLinks = options.interactiveLinks !== false;
-  const html = [];
-  for (let i = 0; i < lines.length; i += 1) {
-    const line = lines[i];
-    if (!line.trim()) { html.push('<br>'); continue; }
-    const list = line.match(/^\s*(?:([-*+])|(\d+\.))\s+(.+)$/);
-    if (list) {
-      const ordered = Boolean(list[2]);
-      const tag = ordered ? 'ol' : 'ul';
-      const items = [];
-      while (i < lines.length) {
-        const item = lines[i].match(/^\s*(?:([-*+])|(\d+\.))\s+(.+)$/);
-        if (!item || Boolean(item[2]) !== ordered) break;
-        items.push(`<li>${markdownInlineToHtml(item[3], { interactiveLinks })}</li>`);
-        i += 1;
-      }
-      i -= 1;
-      html.push(`<${tag}>${items.join('')}</${tag}>`);
-      continue;
-    }
-    const heading = line.match(/^(#{1,6})\s+(.+)$/);
-    if (heading) {
-      const level = heading[1].length;
-      html.push(`<h${level}>${markdownInlineToHtml(heading[2], { interactiveLinks })}</h${level}>`);
-      continue;
-    }
-    const quote = line.match(/^>\s?(.+)$/);
-    if (quote) { html.push(`<blockquote>${markdownInlineToHtml(quote[1], { interactiveLinks })}</blockquote>`); continue; }
-    html.push(`<p>${markdownInlineToHtml(line, { interactiveLinks })}</p>`);
-  }
-  return html.join('');
-}
-
-function markdownInlineToHtml(value, options: any = {}) {
-  const tokens = [];
-  const stash = (html) => {
-    const token = `\u0000${tokens.length}\u0000`;
-    tokens.push(html);
-    return token;
-  };
-  let source = String(value || '')
-    .replace(/`([^`\n]+)`/g, (_, code) => stash(`<code>${escapeHtml(code)}</code>`))
-    .replace(/\[([^\]\n]+)\]\(([^\s)]+)\)/g, (_, label, url) => {
-      const href = safeLinkUrl(url);
-      if (!href) return escapeHtml(label);
-      if (options.interactiveLinks === false) return stash(`<span class="markdown-link">${escapeHtml(label)}</span>`);
-      return stash(`<a href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
-    });
-  let html = escapeHtml(source);
-  html = html
-    .replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>')
-    .replace(/___([^_]+)___/g, '<strong><em>$1</em></strong>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
-    .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-    .replace(/_([^_]+)_/g, '<em>$1</em>')
-    .replace(/~~([^~]+)~~/g, '<del>$1</del>');
-  return html.replace(/\u0000(\d+)\u0000/g, (_, index) => tokens[Number(index)] || '');
-}
-
-function markdownToPlainText(markdown) {
-  return String(markdown || '')
-    .replace(/^#{1,6}\s+/gm, '')
-    .replace(/^>\s?/gm, '')
-    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, '• ')
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-    .replace(/`([^`\n]+)`/g, '$1')
-    .replace(/\*\*\*([^*]+)\*\*\*/g, '$1')
-    .replace(/___([^_]+)___/g, '$1')
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/__([^_]+)__/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/_([^_]+)_/g, '$1')
-    .replace(/~~([^~]+)~~/g, '$1');
-}
-
-function safeLinkUrl(url) {
-  try {
-    const parsed = new URL(String(url), location.href);
-    return ['http:', 'https:', 'mailto:'].includes(parsed.protocol) ? parsed.href : '';
-  } catch {
-    return '';
-  }
+function plainTextToHtml(text) {
+  return escapeHtml(text).replace(/\n/g, '<br>');
 }

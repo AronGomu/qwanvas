@@ -227,25 +227,26 @@ function renderCanvas(project) {
   if (backgroundImage) els.canvas.append(renderBackgroundImageLayer(backgroundImage));
   for (const element of page.elements.toSorted((a, b) => (a.z || 1) - (b.z || 1))) {
     const node = document.createElement('div');
-    node.className = `canvas-element ${element.type} ${element.id === selectedId ? 'selected' : ''} ${element.id === editingId ? 'editing' : ''}`;
+    const isEditingText = element.type === 'text' && element.id === editingId;
+    node.className = `canvas-element ${element.type} ${element.id === selectedId ? 'selected' : ''} ${isEditingText ? 'editing' : ''}`;
     node.style.cssText = elementStyle(element);
     node.dataset.id = element.id;
-    node.tabIndex = 0;
-    node.role = 'button';
-    node.ariaLabel = `${element.type} element. Arrow keys move; Shift plus arrow resizes.`;
-    node.ariaPressed = element.id === selectedId ? 'true' : 'false';
+    node.tabIndex = isEditingText ? -1 : 0;
+    if (!isEditingText) {
+      node.role = 'button';
+      node.ariaLabel = `${element.type} element. Arrow keys move; Shift plus arrow resizes.`;
+      node.ariaPressed = element.id === selectedId ? 'true' : 'false';
+    }
     if (element.type === 'text') {
-      node.innerHTML = `<div class="text-selection-frame"><div class="text-content"></div><span class="handle rotate"></span><span class="handle resize"></span></div>`;
+      node.innerHTML = `<div class="text-selection-frame"><div class="text-content"></div><span class="text-drag-edge drag-top"></span><span class="text-drag-edge drag-right"></span><span class="text-drag-edge drag-bottom"></span><span class="text-drag-edge drag-left"></span><span class="handle rotate"></span><span class="handle resize resize-top-left"></span><span class="handle resize resize-top-right"></span><span class="handle resize resize-bottom-right"></span><span class="handle resize resize-bottom-left"></span><span class="handle resize resize-right"></span><span class="handle resize resize-bottom"></span><span class="handle resize resize-left"></span><span class="handle resize resize-top"></span></div>`;
       const text: any = node.querySelector('.text-content');
-      text.contentEditable = element.id === editingId ? 'true' : 'false';
-      if (element.id === editingId) {
-        text.textContent = element.text;
+      text.contentEditable = isEditingText ? 'true' : 'false';
+      text.textContent = element.text || '';
+      if (isEditingText) {
         text.setAttribute('role', 'textbox');
         text.setAttribute('aria-multiline', 'true');
-      } else {
-        text.innerHTML = markdownToHtml(element.text, { interactiveLinks: false });
       }
-      text.setAttribute('aria-label', 'Edit markdown text on canvas');
+      text.setAttribute('aria-label', 'Edit text on canvas');
       applyTextStyle(text, element);
       text.addEventListener('input', () => updateCanvasText(element.id, text.textContent));
       text.addEventListener('keydown', stopEditingOnEscape);
@@ -254,15 +255,18 @@ function renderCanvas(project) {
       const img = document.createElement('img');
       img.alt = '';
       img.src = safeImageSrc(element.src);
-      node.append(img, canvasHandle('rotate'), canvasHandle('resize'), canvasHandle('crop crop-left'), canvasHandle('crop crop-right'), canvasHandle('crop crop-top'), canvasHandle('crop crop-bottom'));
+      node.append(img, canvasHandle('rotate'), canvasHandle('resize resize-top-left'), canvasHandle('resize resize-top-right'), canvasHandle('resize resize-bottom-right'), canvasHandle('resize resize-bottom-left'), canvasHandle('resize resize-right'), canvasHandle('resize resize-bottom'), canvasHandle('resize resize-left'), canvasHandle('resize resize-top'), canvasHandle('crop crop-left'), canvasHandle('crop crop-right'), canvasHandle('crop crop-top'), canvasHandle('crop crop-bottom'));
     } else {
-      node.innerHTML = `<span class="handle rotate"></span><span class="handle resize"></span>`;
+      node.innerHTML = `<span class="handle rotate"></span><span class="handle resize resize-top-left"></span><span class="handle resize resize-top-right"></span><span class="handle resize resize-bottom-right"></span><span class="handle resize resize-bottom-left"></span><span class="handle resize resize-right"></span><span class="handle resize resize-bottom"></span><span class="handle resize resize-left"></span><span class="handle resize resize-top"></span>`;
     }
     node.addEventListener('pointerdown', startDrag);
-    node.addEventListener('click', () => selectElement(element.id));
+    node.addEventListener('click', () => {
+      if (editingId === element.id) return;
+      if (element.type === 'text') startCanvasTextEdit(element.id);
+      else selectElement(element.id);
+    });
     node.addEventListener('focus', () => selectElement(element.id, { renderCanvasToo: false }));
     node.addEventListener('keydown', handleElementKeydown);
-    node.addEventListener('dblclick', () => { if (element.type === 'text') startCanvasTextEdit(element.id); });
     els.canvas.append(node);
   }
   renderSelectionToolbar(page);
@@ -270,27 +274,68 @@ function renderCanvas(project) {
 
 function renderSelectionToolbar(page) {
   const element = page.elements.find((candidate) => candidate.id === selectedId);
-  if (!element || editingId === element.id) return;
-  const toolbar = document.createElement('div');
+  if (!element) return;
   const placement = selectionToolbarPlacement(element);
-  toolbar.className = `selection-toolbar ${placement.showAbove ? 'above' : ''}`;
-  toolbar.style.setProperty('--toolbar-x', `${placement.x}%`);
-  toolbar.style.setProperty('--toolbar-y', `${placement.y}%`);
+  const horizontalActions = ALIGNMENT_ACTIONS.filter((action) => action.axis === 'x');
+  const verticalActions = ALIGNMENT_ACTIONS.filter((action) => action.axis === 'y');
+  els.canvas.append(selectionToolbar('horizontal-align', 'Horizontal alignment', placement, horizontalActions.map((action) => ({
+    id: action.id,
+    icon: action.icon,
+    title: `${action.title} ${action.shortcut}`,
+    run: () => alignSelectedElement(action, { restoreToolbarFocus: true }),
+  }))));
+  els.canvas.append(selectionToolbar('vertical-align', 'Vertical alignment', placement, verticalActions.map((action) => ({
+    id: action.id,
+    icon: action.icon,
+    title: `${action.title} ${action.shortcut}`,
+    run: () => alignSelectedElement(action, { restoreToolbarFocus: true }),
+  }))));
+  if (element.type === 'text') {
+    els.canvas.append(selectionToolbar('text-style', 'Text style and justification', placement, [
+      { id: 'text-bold', icon: 'B', title: 'Bold', active: Boolean(element.bold), run: () => toggleSelectedTextStyle('bold') },
+      { id: 'text-italic', icon: 'I', title: 'Italic', active: Boolean(element.italic), run: () => toggleSelectedTextStyle('italic') },
+      { id: 'text-underline', icon: 'U', title: 'Underline', active: Boolean(element.underline), run: () => toggleSelectedTextStyle('underline') },
+      { id: 'text-color', icon: '■', title: 'Text color', color: element.color || TEXT_DEFAULT.color, run: openSelectionColorPicker },
+      ...horizontalActions.map((action) => ({
+        id: `text-${action.position}`,
+        icon: action.position === 'start' ? '≡‹' : action.position === 'center' ? '≡' : '›≡',
+        title: `Justify text ${action.position === 'start' ? 'left' : action.position === 'end' ? 'right' : 'center'}`,
+        active: (element.textAlign || TEXT_DEFAULT.textAlign) === (action.position === 'start' ? 'left' : action.position === 'end' ? 'right' : 'center'),
+        run: () => setSelectedTextAlign(action.position === 'start' ? 'left' : action.position === 'end' ? 'right' : 'center'),
+      })),
+    ]));
+  }
+}
+
+function selectionToolbar(kind, label, placement, actions) {
+  const toolbar = document.createElement('div');
+  toolbar.className = `selection-toolbar ${kind} ${kind === 'vertical-align' && placement.right > 84 ? 'flipped' : ''}`;
+  toolbar.style.setProperty('--toolbar-left', `${placement.left}%`);
+  toolbar.style.setProperty('--toolbar-right', `${placement.right}%`);
+  toolbar.style.setProperty('--toolbar-top', `${placement.top}%`);
+  toolbar.style.setProperty('--toolbar-bottom', `${placement.bottom}%`);
+  toolbar.style.setProperty('--toolbar-side-x', `${placement.right > 84 ? placement.left - 3.2 : placement.right + 3.2}%`);
   toolbar.setAttribute('role', 'toolbar');
-  toolbar.setAttribute('aria-label', 'Align selected element');
-  toolbar.addEventListener('pointerdown', (event) => event.stopPropagation());
-  for (const action of ALIGNMENT_ACTIONS) {
+  toolbar.setAttribute('aria-label', label);
+  toolbar.addEventListener('pointerdown', (event) => {
+    (event.target as HTMLElement).closest('button')?.focus({ preventScroll: true });
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  for (const action of actions) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = `selection-align-btn ${action.axis === 'y' ? 'vertical' : 'horizontal'}`;
-    button.title = `${action.title} ${action.shortcut}`;
-    button.setAttribute('aria-label', `${action.title} (${action.shortcut})`);
+    button.className = `selection-align-btn ${action.active ? 'active' : ''}`;
+    button.title = action.title;
+    button.setAttribute('aria-label', action.title);
     button.dataset.alignAction = action.id;
     button.innerHTML = `<span aria-hidden="true">${action.icon}</span>`;
-    button.onclick = (event) => { event.stopPropagation(); alignSelectedElement(action, { restoreToolbarFocus: true }); };
+    if (action.color) button.style.color = action.color;
+    button.onpointerdown = (event) => { event.preventDefault(); event.stopPropagation(); button.focus({ preventScroll: true }); action.run(); };
+    button.onclick = (event) => { event.stopPropagation(); if ((event as MouseEvent).detail === 0) action.run(); };
     toolbar.append(button);
   }
-  els.canvas.append(toolbar);
+  return toolbar;
 }
 
 function selectionToolbarPlacement(element) {
@@ -299,22 +344,13 @@ function selectionToolbarPlacement(element) {
   const targetNode = element.type === 'text' ? selectedNode?.querySelector('.text-selection-frame') : selectedNode;
   const targetRect = targetNode?.getBoundingClientRect?.();
   if (!targetRect || !canvasRect.width || !canvasRect.height) {
-    const showAboveFallback = element.y + element.h / 2 > SELECTION_TOOLBAR_EDGE_THRESHOLD;
-    return {
-      x: element.x,
-      y: showAboveFallback ? element.y - element.h / 2 - SELECTION_TOOLBAR_OFFSET : element.y + element.h / 2 + SELECTION_TOOLBAR_OFFSET,
-      showAbove: showAboveFallback,
-    };
+    return { left: element.x - element.w / 2, right: element.x + element.w / 2, top: element.y - element.h / 2, bottom: element.y + element.h / 2 };
   }
-  const left = ((targetRect.left - canvasRect.left) / canvasRect.width) * 100;
-  const right = ((targetRect.right - canvasRect.left) / canvasRect.width) * 100;
-  const top = ((targetRect.top - canvasRect.top) / canvasRect.height) * 100;
-  const bottom = ((targetRect.bottom - canvasRect.top) / canvasRect.height) * 100;
-  const showAbove = bottom > SELECTION_TOOLBAR_EDGE_THRESHOLD;
   return {
-    x: clamp((left + right) / 2, 0, 100, element.x),
-    y: showAbove ? top - SELECTION_TOOLBAR_OFFSET : bottom + SELECTION_TOOLBAR_OFFSET,
-    showAbove,
+    left: ((targetRect.left - canvasRect.left) / canvasRect.width) * 100,
+    right: ((targetRect.right - canvasRect.left) / canvasRect.width) * 100,
+    top: ((targetRect.top - canvasRect.top) / canvasRect.height) * 100,
+    bottom: ((targetRect.bottom - canvasRect.top) / canvasRect.height) * 100,
   };
 }
 
@@ -393,14 +429,23 @@ function selectElement(id, options = {}) {
     node.classList.toggle('selected', node.dataset.id === id);
     node.ariaPressed = node.dataset.id === id ? 'true' : 'false';
   });
-  els.canvas.querySelector('.selection-toolbar')?.remove();
+  els.canvas.querySelectorAll('.selection-toolbar').forEach((toolbar) => toolbar.remove());
   renderSelectionToolbar(activePage(current()));
   renderInspector(current());
 }
 
 function focusTextInspector() {
-  textInspectorAutoFocused = true;
-  els.textControl.focus({ preventScroll: true });
+  const element = selected(current());
+  if (element?.type === 'text') startCanvasTextEdit(element.id);
+}
+
+function clearElementSelection() {
+  if (!selectedId && !editingId) return;
+  selectedId = null;
+  editingId = null;
+  editBefore = null;
+  saveUiState('clearElementSelection');
+  render();
 }
 
 function shouldDeleteSelectedElement(event) {
@@ -417,6 +462,20 @@ function alignmentActionFromEvent(event) {
   const position = key === '[' ? 'start' : key === ']' ? 'end' : 'center';
   const axis = event.shiftKey ? 'y' : 'x';
   return ALIGNMENT_ACTIONS.find((action) => action.axis === axis && action.position === position);
+}
+
+function setSelectedTextAlign(textAlign) {
+  if (!selectedId) return;
+  patchSelected((element) => { if (element.type === 'text') element.textAlign = textAlign; });
+}
+
+function toggleSelectedTextStyle(field) {
+  if (!selectedId) return;
+  patchSelected((element) => { if (element.type === 'text') element[field] = !element[field]; });
+}
+
+function openSelectionColorPicker() {
+  els.colorControl.click();
 }
 
 function alignSelectedElement(action, options = {}) {
@@ -444,9 +503,9 @@ function renderInspector(project) {
   if (!element) return;
   const isText = element.type === 'text';
   const isImage = element.type === 'image';
-  els.textControl.closest('.field').hidden = !isText;
-  els.wControl.closest('.field').hidden = isText;
-  els.hControl.closest('.field').hidden = isText;
+  els.textControl.hidden = true;
+  els.wControl.closest('.field').hidden = false;
+  els.hControl.closest('.field').hidden = false;
   els.fontSizeControl.closest('.field').hidden = !isText;
   els.fontControl.closest('.field').hidden = !isText;
   if (isImage) element.aspectLocked = true;
@@ -457,18 +516,19 @@ function renderInspector(project) {
     els.cropTopControl.value = imageCrop(element, 'cropTop');
     els.cropBottomControl.value = imageCrop(element, 'cropBottom');
   }
-  els.fontSizeControl.value = element.fontSize || 42;
+  syncFontSizeControls(element.fontSize || TEXT_DEFAULT.fontSize);
   els.colorControl.value = element.color || '#ffffff';
-  els.fontControl.value = element.font || 'Inter';
+  if (document.activeElement !== els.fontControl) els.fontControl.value = element.font || TEXT_DEFAULT.font;
 }
 
-function startCanvasTextEdit(id) {
+function startCanvasTextEdit(id, options: any = {}) {
   const project = current();
   const element = activePage(project).elements.find((el) => el.id === id && el.type === 'text');
   if (!element) return;
   selectedId = id;
   editingId = id;
-  editBefore = clone(project);
+  textEditStartedAt = Date.now();
+  editBefore = editBefore || clone(project);
   render();
   const text: any = els.canvas.querySelector(`[data-id="${CSS.escape(id)}"] .text-content`);
   if (!text) return;
@@ -494,18 +554,24 @@ function updateCanvasText(id, value) {
 function stopEditingOnEscape(event) {
   if (event.key !== 'Escape') return;
   event.preventDefault();
+  textEditStartedAt = 0;
   event.currentTarget.blur();
 }
 
-function finishCanvasTextEdit() {
+function finishCanvasTextEdit(options: any = {}) {
   if (!editingId) return;
+  if (Date.now() - textEditStartedAt < 120) {
+    const id = editingId;
+    requestAnimationFrame(() => els.canvas.querySelector(`[data-id="${CSS.escape(id)}"] .text-content`)?.focus({ preventScroll: true }));
+    return;
+  }
   const before = editBefore;
   const after = current();
   const changed = before && JSON.stringify(before) !== JSON.stringify(after);
   if (changed) { undoHistory.push(before); future = []; }
   editingId = null;
   editBefore = null;
-  render();
+  if (options.render !== false) render();
 }
 
 function isTextEntryTarget(target) {

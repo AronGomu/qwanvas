@@ -18,7 +18,8 @@ const PROJECT_TEMPLATES = [
   { id: 'linkedin-carousel', name: 'LinkedIn carousel', kind: 'deck', width: 1200, height: 1500, aliases: ['linkedin carousel', 'linkedin caroussel', 'carousel', 'caroussel', 'linkedin deck', 'deck'] },
   { id: 'youtube-thumbnail', name: 'YouTube thumbnail', kind: 'image', width: 1280, height: 720, aliases: ['youtube thumbnail', 'youtube', 'thumbnail', 'yt thumbnail'] },
 ] satisfies readonly ProjectTemplate[];
-const TEXT_DEFAULT = { type: 'text', text: '**Double-click** to edit', x: 50, y: 42, w: 62, h: 12, fontSize: 48, color: '#111827', font: 'Inter', bold: false, italic: false, rotation: 0 } as any;
+const FONT_OPTIONS = ['Arial', 'Arial Black', 'Calibri', 'Cambria', 'Candara', 'Comic Sans MS', 'Consolas', 'Courier New', 'Georgia', 'Helvetica', 'Impact', 'Inter', 'Lucida Console', 'Palatino Linotype', 'Segoe UI', 'Tahoma', 'Times New Roman', 'Trebuchet MS', 'Verdana', 'Roboto'] as const;
+const TEXT_DEFAULT = { type: 'text', text: 'Click to edit', x: 50, y: 42, w: 62, h: 12, fontSize: 48, color: '#111827', font: 'Inter', bold: false, italic: false, underline: false, textAlign: 'left', rotation: 0 } as any;
 const TEXT_FONT_SIZE_MIN = 8;
 const TEXT_FONT_SIZE_MAX = 600;
 const SHAPE_DEFAULT = { type: 'shape', x: 50, y: 62, w: 42, h: 18, color: '#74a6ff', rotation: 0 } as any;
@@ -58,9 +59,11 @@ let currentId: Id | undefined = initialProjectIdFromLocation() || restoredCurren
 let selectedId: Id | null = restoredSelectedElementId(uiState, currentId);
 let editingId: Id | null = null;
 let editBefore: Project | null = null;
+let textEditStartedAt = 0;
 let undoHistory: Project[] = [];
 let future: Project[] = [];
 let drag: DragState | null = null;
+let pendingTextDrag: any = null;
 let activeCommandIndex = 0;
 let commandPaletteMode: CommandPaletteMode = null;
 let commandPaletteReturnFocus: HTMLElement | null = null;
@@ -75,6 +78,7 @@ let pendingTemplateProjectName = '';
 let activeTemplateIndex = 0;
 let launcherActiveProjectIndex = 0;
 let textInspectorAutoFocused = false;
+let fontResultIndex = -1;
 let canvasZoom = 1;
 let inspectorResize: { startX: number; startWidth: number } | null = null;
 
@@ -82,9 +86,9 @@ const els = {
   appShell: $('appShell'), projectLauncher: $('projectLauncher'), launcherProjectName: $('launcherProjectName'), launcherProjectNameError: $('launcherProjectNameError'), launcherCreateProjectBtn: $('launcherCreateProjectBtn'), launcherRecentProjects: $('launcherRecentProjects'), launcherImportProjectInput: $('launcherImportProjectInput'), stageWrap: $('stageWrap'), canvas: $('canvas'), pageStrip: $('pageStrip'), projectName: $('projectName'),
   inspectorResizeHandle: $('inspectorResizeHandle'), emptyInspector: $('emptyInspector'), elementInspector: $('elementInspector'),
   textControl: $('textControl'), xControl: $('xControl'), yControl: $('yControl'), wControl: $('wControl'), hControl: $('hControl'),
-  rotationControl: $('rotationControl'),
+  rotationControl: $('rotationControl'), rotationNumberControl: $('rotationNumberControl'),
   cropFields: $('cropFields'), cropTopControl: $('cropTopControl'), cropBottomControl: $('cropBottomControl'),
-  fontSizeControl: $('fontSizeControl'), colorControl: $('colorControl'), fontControl: $('fontControl'),
+  fontSizeControl: $('fontSizeControl'), fontSizeSliderControl: $('fontSizeSliderControl'), colorControl: $('colorControl'), fontControl: $('fontControl'), fontResults: $('fontResults'), fontWarning: $('fontWarning'),
   undoBtn: $('undoBtn'), redoBtn: $('redoBtn'), imageInput: $('imageInput'), backgroundImageInput: $('backgroundImageInput'),
   backgroundSettingsPanel: $('backgroundSettingsPanel'), closeBackgroundSettingsBtn: $('closeBackgroundSettingsBtn'), chooseBackgroundImageBtn: $('chooseBackgroundImageBtn'), backgroundSettingsEmpty: $('backgroundSettingsEmpty'), backgroundSettingsControls: $('backgroundSettingsControls'),
   backgroundXControl: $('backgroundXControl'), backgroundYControl: $('backgroundYControl'), backgroundWControl: $('backgroundWControl'), backgroundHControl: $('backgroundHControl'), backgroundAspectLinkIndicator: $('backgroundAspectLinkIndicator'), backgroundAspectLockControl: $('backgroundAspectLockControl'), resetBackgroundImageBtn: $('resetBackgroundImageBtn'), clearBackgroundImageBtn: $('clearBackgroundImageBtn'),

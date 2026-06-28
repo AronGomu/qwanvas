@@ -1,24 +1,67 @@
 function startDrag(event) {
-  if (event.target.isContentEditable) return;
   const node = event.currentTarget;
   const id = node.dataset.id;
   const project = current();
   const element = activePage(project).elements.find((el) => el.id === id);
-  if (event.detail > 1 && element?.type === 'text') {
-    event.preventDefault();
-    startCanvasTextEdit(id);
-    return;
-  }
   const rect = els.canvas.getBoundingClientRect();
   const cropSide = [...event.target.classList].find((className) => className.startsWith('crop-'))?.replace('crop-', '');
+  const resizeSide = [...event.target.classList].find((className) => className.startsWith('resize-'))?.replace('resize-', '');
   const mode = cropSide ? 'crop' : event.target.classList.contains('resize') ? 'resize' : event.target.classList.contains('rotate') ? 'rotate' : 'move';
+  const textBodyClick = element?.type === 'text' && mode === 'move' && event.target.closest?.('.text-content') && !event.target.closest?.('.text-drag-edge');
+  if (event.target.isContentEditable && !textBodyClick) return;
+  if (textBodyClick) {
+    pendingTextDrag = { id, startX: event.clientX, startY: event.clientY, rect, before: clone(project), element: clone(element), node, pointerId: event.pointerId, wasEditing: editingId === id };
+    if (editingId !== id) selectElement(id, { renderCanvasToo: false });
+    node.setPointerCapture(event.pointerId);
+    node.onpointermove = onPendingTextDragMove;
+    node.onpointerup = node.onpointercancel = endPendingTextDrag;
+    addEventListener('pointermove', onPendingTextDragMove);
+    addEventListener('pointerup', endPendingTextDrag, { once: true });
+    addEventListener('pointercancel', endPendingTextDrag, { once: true });
+    return;
+  }
+  beginElementDrag(event, { node, id, project, element, rect, cropSide, resizeSide, mode });
+}
+
+function beginElementDrag(event, context) {
+  const { node, id, project, element, rect, cropSide, resizeSide, mode } = context;
+  if (editingId === id) finishCanvasTextEdit({ render: false });
   selectElement(id, { renderCanvasToo: false });
-  node.focus({ preventScroll: true });
-  drag = { mode, cropSide, id, startX: event.clientX, startY: event.clientY, rect, before: clone(project), element: clone(element) };
+  drag = { mode, cropSide, resizeSide, id, startX: event.clientX, startY: event.clientY, rect, before: clone(project), element: clone(element) };
   node.setPointerCapture(event.pointerId);
   node.onpointermove = onDrag;
   node.onpointerup = node.onpointercancel = endDrag;
   event.preventDefault();
+}
+
+function onPendingTextDragMove(event) {
+  if (!pendingTextDrag) return;
+  const distance = Math.hypot(event.clientX - pendingTextDrag.startX, event.clientY - pendingTextDrag.startY);
+  if (distance < 4) return;
+  const pending = pendingTextDrag;
+  pendingTextDrag = null;
+  removeEventListener('pointermove', onPendingTextDragMove);
+  removeEventListener('pointerup', endPendingTextDrag);
+  removeEventListener('pointercancel', endPendingTextDrag);
+  pending.node.onpointermove = onDrag;
+  pending.node.onpointerup = pending.node.onpointercancel = endDrag;
+  addEventListener('pointermove', onDrag);
+  addEventListener('pointerup', endDrag, { once: true });
+  addEventListener('pointercancel', endDrag, { once: true });
+  if (editingId === pending.id) finishCanvasTextEdit({ render: false });
+  drag = { mode: 'move', cropSide: null, resizeSide: null, id: pending.id, startX: pending.startX, startY: pending.startY, rect: pending.rect, before: pending.before, element: pending.element };
+  event.preventDefault();
+  onDrag(event);
+}
+
+function endPendingTextDrag(event) {
+  const pending = pendingTextDrag;
+  if (pending) pending.node.onpointermove = pending.node.onpointerup = pending.node.onpointercancel = null;
+  removeEventListener('pointermove', onPendingTextDragMove);
+  removeEventListener('pointerup', endPendingTextDrag);
+  removeEventListener('pointercancel', endPendingTextDrag);
+  pendingTextDrag = null;
+  if (pending && event.type !== 'pointercancel' && !pending.wasEditing) startCanvasTextEdit(pending.id);
 }
 
 function onDrag(event) {
@@ -41,16 +84,64 @@ function onDrag(event) {
   project.updatedAt = Date.now();
   applyElementStyle(element);
   syncGeometryControls(element);
+  updateSelectionToolbars();
 }
 
 function resizeElement(element, event) {
-  const nextW = clamp(drag.element.w + ((event.clientX - drag.startX) / drag.rect.width) * 100, 3, 100);
-  const nextH = clamp(drag.element.h + ((event.clientY - drag.startY) / drag.rect.height) * 100, 3, 100);
+  const deltaW = ((event.clientX - drag.startX) / drag.rect.width) * 100;
+  const deltaH = ((event.clientY - drag.startY) / drag.rect.height) * 100;
+  if (drag.resizeSide) {
+    resizeElementSide(element, drag.resizeSide, deltaW, deltaH);
+    return;
+  }
+  const nextW = clamp(drag.element.w + deltaW, 3, 100);
+  const nextH = clamp(drag.element.h + deltaH, 3, 100);
   if (element.type !== 'image') {
     setElementSize(element, { w: nextW, h: nextH, from: drag.element });
     return;
   }
   setElementSize(element, { ...lockedDragSize(element, nextW, nextH, drag.element, drag.rect), from: drag.element, rect: drag.rect });
+}
+
+function resizeElementSide(element, side, deltaW, deltaH) {
+  const start = drag.element;
+  const resizeRight = side === 'right' || side === 'top-right' || side === 'bottom-right';
+  const resizeLeft = side === 'left' || side === 'top-left' || side === 'bottom-left';
+  const resizeBottom = side === 'bottom' || side === 'bottom-left' || side === 'bottom-right';
+  const resizeTop = side === 'top' || side === 'top-left' || side === 'top-right';
+  if (resizeRight) {
+    element.w = clamp(start.w + deltaW, 3, 100);
+    element.x = start.x + (element.w - start.w) / 2;
+  } else if (resizeLeft) {
+    element.w = clamp(start.w - deltaW, 3, 100);
+    element.x = start.x - (element.w - start.w) / 2;
+  }
+  if (resizeBottom) {
+    element.h = clamp(start.h + deltaH, 3, 100);
+    element.y = start.y + (element.h - start.h) / 2;
+  } else if (resizeTop) {
+    element.h = clamp(start.h - deltaH, 3, 100);
+    element.y = start.y - (element.h - start.h) / 2;
+  }
+}
+
+function updateSelectionToolbars() {
+  if (!selectedId) return;
+  const element = selected(current());
+  if (!element) return;
+  const placement = selectionToolbarPlacementFromModel(element);
+  els.canvas.querySelectorAll('.selection-toolbar').forEach((toolbar: any) => {
+    toolbar.style.setProperty('--toolbar-left', `${placement.left}%`);
+    toolbar.style.setProperty('--toolbar-right', `${placement.right}%`);
+    toolbar.style.setProperty('--toolbar-top', `${placement.top}%`);
+    toolbar.style.setProperty('--toolbar-bottom', `${placement.bottom}%`);
+    toolbar.style.setProperty('--toolbar-side-x', `${placement.right > 84 ? placement.left - 3.2 : placement.right + 3.2}%`);
+    toolbar.classList.toggle('flipped', toolbar.classList.contains('vertical-align') && placement.right > 84);
+  });
+}
+
+function selectionToolbarPlacementFromModel(element) {
+  return { left: element.x - element.w / 2, right: element.x + element.w / 2, top: element.y - element.h / 2, bottom: element.y + element.h / 2 };
 }
 
 function cropImageSide(element, event) {
@@ -133,7 +224,7 @@ function applyElementStyle(element) {
 
 function applyTextStyle(text, element) {
   if (!text) return;
-  Object.assign(text.style, { fontSize: `calc(${element.fontSize || TEXT_DEFAULT.fontSize} / var(--page-width, ${CANVAS_SIZE_DEFAULT.width}) * 100cqw)`, fontFamily: element.font || 'Inter', fontWeight: element.bold ? '800' : '500', fontStyle: element.italic ? 'italic' : 'normal', color: element.color || '#fff' });
+  Object.assign(text.style, { fontSize: `calc(${element.fontSize || TEXT_DEFAULT.fontSize} / var(--page-width, ${CANVAS_SIZE_DEFAULT.width}) * 100cqw)`, fontFamily: element.font || 'Inter', fontWeight: element.bold ? '800' : '500', fontStyle: element.italic ? 'italic' : 'normal', textDecoration: element.underline ? 'underline' : 'none', textAlign: element.textAlign || TEXT_DEFAULT.textAlign, color: element.color || '#fff' });
 }
 
 function syncGeometryControls(element) {
@@ -142,13 +233,20 @@ function syncGeometryControls(element) {
   els.wControl.value = Math.round(element.w);
   els.hControl.value = Math.round(element.h);
   els.rotationControl.value = element.rotation || 0;
-  if (element.type === 'text') els.fontSizeControl.value = element.fontSize || TEXT_DEFAULT.fontSize;
+  els.rotationNumberControl.value = element.rotation || 0;
+  if (element.type === 'text') {
+    syncFontSizeControls(element.fontSize || TEXT_DEFAULT.fontSize);
+  }
 }
+
 
 function endDrag(event) {
   event.currentTarget.onpointermove = event.currentTarget.onpointerup = event.currentTarget.onpointercancel = null;
+  removeEventListener('pointermove', onDrag);
+  removeEventListener('pointerup', endDrag);
+  removeEventListener('pointercancel', endDrag);
   if (drag) {
-    const idToFocus = drag.id;
+    const dragMode = drag.mode;
     const changed = JSON.stringify(drag.before) !== JSON.stringify(current());
     if (changed) { undoHistory.push(drag.before); future = []; }
     drag = null;
@@ -157,7 +255,7 @@ function endDrag(event) {
       saveUiState('endDrag');
       render();
     }
-    requestAnimationFrame(() => els.canvas.querySelector(`[data-id="${CSS.escape(idToFocus)}"]`)?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => els.canvas.querySelector(`[data-id="${CSS.escape(selectedId || '')}"]`)?.focus({ preventScroll: true }));
   }
 }
 
@@ -184,6 +282,24 @@ function mutate(fn, record = true, operation = 'mutate') {
 function patchSelected(fn, live = false) {
   if (!selectedId) return;
   mutate((project) => { const element = selected(project); if (element) fn(element); }, !live);
+}
+
+function confirmDeleteSelectedElement() {
+  if (!selectedId) return;
+  const element = selected(current());
+  const label = element?.type ? `${element.type} element` : 'selected element';
+  if (!confirm(`Delete this ${label}?`)) return;
+  mutate((project) => {
+    activePage(project).elements = activePage(project).elements.filter((el) => el.id !== selectedId);
+    selectedId = null;
+    editingId = null;
+    editBefore = null;
+    saveUiState('deleteElement');
+  });
+}
+
+function topElementZ() {
+  return Math.max(0, ...activePage(current()).elements.map((element) => element.z || 1));
 }
 
 async function addImageFile(file, position = IMAGE_DEFAULT) {
@@ -237,9 +353,9 @@ function widthHeightRatio(element, rect = CANVAS_SIZE_DEFAULT) {
 }
 
 function setElementSize(element, { w = element.w, h = element.h, source, from, rect = els.canvas.getBoundingClientRect(), max = 100 }: any = {}) {
-  const resizeFrom = from || { w: element.w, h: element.h, fontSize: element.fontSize };
   if (element.type === 'text') {
-    scaleTextFontForSize(element, resizeFrom, source, { w, h, max });
+    element.w = clamp(w, 3, max);
+    element.h = clamp(h, 3, max);
     return;
   }
   if (element.type !== 'image' || isUnlockedBackgroundImage(element)) {
@@ -268,20 +384,6 @@ function setElementSize(element, { w = element.w, h = element.h, source, from, r
 function isUnlockedBackgroundImage(element) {
   const project = current();
   return Boolean(project && activePage(project)?.backgroundImage === element && !imageAspectLocked(element));
-}
-
-function scaleTextFontForSize(element, from = element, source, target = element) {
-  const max = target.max || 100;
-  const startW = clamp(from.w, 3, max, TEXT_DEFAULT.w);
-  const startH = clamp(from.h, 3, max, TEXT_DEFAULT.h);
-  const startFontSize = clamp(from.fontSize, TEXT_FONT_SIZE_MIN, TEXT_FONT_SIZE_MAX, TEXT_DEFAULT.fontSize);
-  const widthScale = clamp(target.w, 3, max, startW) / startW;
-  const heightScale = clamp(target.h, 3, max, startH) / startH;
-  const requestedScale = source === 'w' ? widthScale : source === 'h' ? heightScale : Math.max(widthScale, heightScale);
-  const scale = clamp(requestedScale, Math.max(3 / startW, 3 / startH), Math.min(max / startW, max / startH), 1);
-  element.w = clamp(startW * scale, 3, max);
-  element.h = clamp(startH * scale, 3, max);
-  element.fontSize = Math.round(clamp(startFontSize * scale, TEXT_FONT_SIZE_MIN, TEXT_FONT_SIZE_MAX, startFontSize));
 }
 
 function lockImageRatioToCurrentSize(element, rect = els.canvas.getBoundingClientRect()) {
