@@ -136,6 +136,22 @@
           </div>
           <label class="field"><span>Font size</span><span class="control-pair"><input id="fontSizeSliderControl" type="range" min="8" max="200" aria-label="Font size slider"><select id="fontSizeControl" aria-label="Font size preset"><option value="14">14</option><option value="18">18</option><option value="20">20</option><option value="24">24</option><option value="28">28</option><option value="32">32</option><option value="36">36</option><option value="48">48</option><option value="56">56</option><option value="70">70</option><option value="96">96</option><option value="128">128</option></select></span></label>
           <div class="field color-field"><span>Color</span><div class="color-controls" aria-label="Text color presets"><button type="button" data-color="#111827" style="--swatch:#111827" aria-label="Black"></button><button type="button" data-color="#ffffff" style="--swatch:#ffffff" aria-label="White"></button><button type="button" data-color="#ef4444" style="--swatch:#ef4444" aria-label="Red"></button><button type="button" data-color="#f59e0b" style="--swatch:#f59e0b" aria-label="Amber"></button><button type="button" data-color="#22c55e" style="--swatch:#22c55e" aria-label="Green"></button><button type="button" data-color="#3b82f6" style="--swatch:#3b82f6" aria-label="Blue"></button><input id="colorControl" type="color" aria-label="Custom text color"></div></div>
+          <section id="textBackgroundSection" class="inspector-section" aria-labelledby="textBackgroundSectionTitle" hidden>
+            <h3 id="textBackgroundSectionTitle">Text background</h3>
+            <div class="text-background-row">
+              <label class="field"><span>Opacity</span><span class="control-pair"><input id="textBackgroundOpacitySliderControl" type="range" min="0" max="100" step="1" aria-label="Text background opacity slider"><input id="textBackgroundOpacityControl" type="number" min="0" max="100" step="1" aria-label="Text background opacity percent"></span></label>
+              <label class="field background-color-field"><span>Background color</span><input id="textBackgroundColorControl" type="color" aria-label="Text background color"></label>
+            </div>
+          </section>
+          <section id="textBorderSection" class="inspector-section" aria-labelledby="textBorderSectionTitle" hidden>
+            <h3 id="textBorderSectionTitle">Text border</h3>
+            <div class="text-border-row">
+              <label class="field check-field text-border-toggle"><input id="borderControl" type="checkbox"><span>Show border</span></label>
+              <label class="field"><span>Padding</span><span class="control-pair"><input id="borderPaddingSliderControl" type="range" min="0" max="120" step="1" aria-label="Border padding slider"><input id="borderPaddingControl" type="number" min="0" max="120" step="1" aria-label="Border padding pixels"></span></label>
+              <label class="field"><span>Radius</span><span class="control-pair"><input id="borderRadiusSliderControl" type="range" min="0" max="120" step="1" aria-label="Border radius slider"><input id="borderRadiusControl" type="number" min="0" max="120" step="1" aria-label="Border radius pixels"></span></label>
+              <label class="field border-color-field"><span>Border color</span><input id="borderColorControl" type="color" aria-label="Border color"></label>
+            </div>
+          </section>
           <div class="field"><span>Layer order</span><div class="button-row layer-actions" role="group" aria-label="Layer order">
             <button id="backmostBtn" type="button" title="Send to back" aria-label="Send to back">⇊</button>
             <button id="backBtn" type="button" title="Send backward" aria-label="Send backward">↓</button>

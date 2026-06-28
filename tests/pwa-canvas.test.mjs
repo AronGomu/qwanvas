@@ -63,7 +63,7 @@ test('pwa canvas: clicking text enters direct visible edit mode', () => {
 
   assert.doesNotMatch(app, /addEventListener\('dblclick'/, 'text editing should no longer require double-click');
   assert.match(app, /if \(base\.type === 'text' && addedElementId\) requestAnimationFrame\(\(\) => startCanvasTextEdit\(addedElementId\)\)/, 'new text elements should immediately enter text edit mode');
-  assert.match(app, /const textBodyClick = element\?\.type === 'text'[\s\S]*?pendingTextDrag = \{[\s\S]*?endPendingTextDrag[\s\S]*?startCanvasTextEdit\(pending\.id\)/, 'text pointerdown should defer between click-to-edit and drag-to-move');
+  assert.match(app, /const textEdgeDrag = element\?\.type === 'text'[\s\S]*?if \(element\?\.type === 'text' && mode === 'move' && !textEdgeDrag\) return;/, 'text pointerdown should only start movement from the selection border so body clicks edit');
   assert.match(app, /text\.contentEditable = isEditingText \? 'true' : 'false'/);
   assert.match(app, /text\.focus\(\{ preventScroll: true \}\)/, 'text edits should focus the canvas text directly by default');
   assert.match(app, /target\.isContentEditable/, 'global shortcuts should not steal canvas text keystrokes');
@@ -76,22 +76,32 @@ test('pwa canvas: text renders as escaped plain text on canvas and export HTML',
 
   assert.match(app, /text\.textContent = element\.text \|\| ''/, 'canvas text should render as plain escaped text');
   assert.match(app, /\$\{plainTextToHtml\(element\.text \|\| ''\)\}/, 'exported HTML should preserve plain text line breaks');
-  assert.match(app, /wrapText\(ctx, element\.text \|\| ''/, 'PNG export should use raw text without markdown transforms');
+  assert.match(app, /const wrapped = wrappedTextLines\(ctx, element\.text \|\| '', maxTextW\)/, 'PNG export should use raw text without markdown transforms');
+  assert.match(app, /for \(const char of segment\)[\s\S]*?charWidth > maxWidth/, 'PNG text wrapping should match CSS overflow-wrap:anywhere for long tokens');
   assert.doesNotMatch(app, /markdownToHtml|markdownInlineToHtml|markdownToPlainText|safeLinkUrl/, 'markdown handling should be removed from text rendering');
   assert.match(app, /aria-multiline', 'true'/, 'canvas editor should expose multiline textbox semantics');
   assert.doesNotMatch(css, /\.text-content h1|\.text-content code|markdown-link/, 'canvas markdown preview styles should be removed');
 });
 
-test('pwa canvas: text resize changes the box independently from font size', () => {
+test('pwa canvas: text auto-fits and cannot be width-height resized', () => {
   const app = appSource();
+  const css = file('src/styles.css');
 
   assert.match(app, /const TEXT_FONT_SIZE_MIN = 8;/, 'font-size controls should keep a readable lower bound');
   assert.match(app, /const TEXT_FONT_SIZE_MAX = 600;/, 'font-size controls should allow very large canvas type');
-  assert.match(app, /if \(element\.type === 'text'\) \{[\s\S]*?element\.w = clamp\(w, 3, max\);[\s\S]*?element\.h = clamp\(h, 3, max\);[\s\S]*?return;[\s\S]*?\}/, 'text resize should update width and height without touching fontSize');
-  assert.doesNotMatch(app, /scaleTextFontForSize|resizeTextFont|pointerDistanceFromElementCenter/, 'text resize should not scale font size implicitly');
-  assert.match(app, /function resizeElementSide\(element, side, deltaW, deltaH\)/, 'side and corner handles should share anchored resize logic');
-  assert.match(app, /side === 'top-left'[\s\S]*?side === 'bottom-right'/, 'corner handles should support diagonal anchored resize directions');
-  assert.match(app, /element\.x = start\.x \+ \(element\.w - start\.w\) \/ 2[\s\S]*?element\.x = start\.x - \(element\.w - start\.w\) \/ 2[\s\S]*?element\.y = start\.y \+ \(element\.h - start\.h\) \/ 2[\s\S]*?element\.y = start\.y - \(element\.h - start\.h\) \/ 2/, 'resize should shift center so the opposite edge stays anchored');
+  assert.match(app, /function setSelectedTextFontSize\(value\)[\s\S]*?el\.w = 100;[\s\S]*?fitTextElementToRenderedContent\(element\.id\)/, 'font-size changes should remeasure text against the canvas and persist the fitted element box');
+  assert.match(app, /function applyTextFit\(id\)[\s\S]*?text\.offsetWidth[\s\S]*?text\.offsetHeight[\s\S]*?element\.w = nextW;[\s\S]*?element\.h = nextH;/, 'text fitting should derive stored geometry from the rendered text div size');
+  assert.match(app, /function fitTextElementToRenderedContent\(id = selectedId, options: any = \{\}\)[\s\S]*?cancelAnimationFrame\(pendingTextFitFrame\)[\s\S]*?pendingTextFitId = id;[\s\S]*?applyTextFit\(id\)/, 'text fitting should coalesce measurements and flush safely before commit');
+  assert.match(app, /if \(element\.type === 'text'\) return;/, 'text width and height resizing should no-op at the shared geometry setter');
+  assert.match(app, /element\?\.type === 'text' && mode === 'move' && event\.target\.closest\?\.\('\.text-drag-edge'\)/, 'text move drags should only start from the text border hit area');
+  assert.match(app, /element\?\.type === 'text' && mode === 'move' && !textEdgeDrag\) return;/, 'text body pointer drags should not move the element');
+  assert.match(app, /node\.innerHTML = `<div class="text-selection-frame"><div class="text-content"><\/div><span class="text-drag-edge drag-top"><\/span><span class="text-drag-edge drag-right"><\/span><span class="text-drag-edge drag-bottom"><\/span><span class="text-drag-edge drag-left"><\/span><span class="handle rotate"><\/span><\/div>`;/, 'text elements should not render width or height resize handles');
+  assert.match(app, /canApply: \(element\) => element\?\.type !== 'text'[\s\S]*?id: 'set-height'[\s\S]*?canApply: \(element\) => element\?\.type !== 'text'[\s\S]*?id: 'set-size'[\s\S]*?canApply: \(element\) => element\?\.type !== 'text'/, 'command palette size commands should disable for selected text');
+  assert.match(css, /\.canvas-element\.text \{[^}]*width: fit-content;[^}]*max-width: calc\(var\(--w\) \* 1cqw\);[^}]*height: auto;/, 'editor text elements should auto-fit while preserving stored width as a max wrap width');
+  assert.match(css, /\.canvas-element \.text-content \{[^}]*display: inline-block;[^}]*width: fit-content;[^}]*max-width: 100%;[^}]*height: auto;/, 'the text content box should fit the rendered text closely');
+  assert.match(app, /\.qwanvas-element\[data-type="text"\] \{ width: fit-content; max-width: calc\(var\(--w\) \* 1%\); height: auto;/, 'HTML export should use the same auto-fit text geometry');
+  assert.match(app, /const textW = Math\.min\(maxTextW, Math\.max\(1, wrapped\.maxLineWidth\)\)/, 'PNG export should measure tight text bounds within the stored max width');
+  assert.doesNotMatch(app, /scaleTextFontForSize|resizeTextFont|pointerDistanceFromElementCenter|pendingTextDrag/, 'removed text resize/body-drag paths should stay gone');
   assert.match(app, /updateSelectionToolbars\(\)/, 'floating toolbars should follow live drags');
   assert.match(app, /applyTextStyle\(node\.querySelector\('\.text-content'\), element\)/, 'live drag styling should keep rendered text synced before pointerup');
 });
@@ -107,17 +117,17 @@ test('pwa canvas: clicking elements selects them and reveals the inspector', () 
   assert.match(app, /selectedId \|\| ''/, 'pointer completion should target the selected canvas element');
   assert.match(app, /focus\(\{ preventScroll: true \}\)/, 'pointer completion should keep focus on canvas rather than inspector controls');
   assert.match(app, /node\.addEventListener\('focus', \(\) => selectElement\(element\.id, \{ renderCanvasToo: false \}\)\)/, 'keyboard focus should select the element');
-  assert.match(app, /function endPendingTextDrag\(event\) \{[\s\S]*?startCanvasTextEdit\(pending\.id\)/, 'clicking a text element body should focus text editing after pointer release');
+  assert.doesNotMatch(app, /function endPendingTextDrag/, 'text body dragging should be removed so body clicks only edit text');
   assert.match(app, /function focusTextInspector\(\) \{[\s\S]*?startCanvasTextEdit\(element\.id\);[\s\S]*?\}/, 'legacy text focus helper should route to direct canvas text editing');
   assert.match(app, /els\.canvas\.querySelectorAll\('\.canvas-element'\)\.forEach\(\(node\) => \{[\s\S]*?node\.classList\.toggle\('selected', node\.dataset\.id === id\)/, 'shared selection should immediately mark newly clicked elements as selected');
-  assert.match(css, /\.selected \.handle \{ display: block; \}/, 'selected text elements should reveal draggable handles as soon as the selected class is applied');
+  assert.match(css, /\.selected \.handle \{ display: block; \}/, 'selected elements should reveal available handles as soon as the selected class is applied');
   assert.match(css, /--selectable-hover-outline: 2px dashed var\(--brand\)/, 'hovered canvas elements should reuse the brand selectable border token');
   assert.match(css, /\.canvas-element:not\(\.selected\):not\(\.editing\):hover, \.canvas-element:not\(\.selected\):not\(\.editing\):focus-visible \{[^}]*outline: var\(--selectable-hover-outline\)/, 'hovered canvas elements should show a selectable border before click selection');
   assert.match(css, /\.canvas-element:not\(\.editing\) \{ cursor: pointer; \}/, 'hovered canvas elements should use a selectable pointer cursor');
   assert.match(css, /\.canvas-element\.selected:focus-visible \{ box-shadow: var\(--selectable-hover-glow\); \}/, 'keyboard focus on selected elements should stay visually distinguishable from persistent selection');
   assert.match(css, /\.canvas-element\.text\.selected, \.canvas-element\.text:not\(\.selected\):not\(\.editing\):hover, \.canvas-element\.text:not\(\.selected\):not\(\.editing\):focus-visible \{ outline: 0; box-shadow: none; \}/, 'selected and hovered text should not outline the full text box');
-  assert.match(css, /\.canvas-element\.text \.text-selection-frame \{[^}]*display: grid;[^}]*width: 100%;[^}]*height: 100%;[^}]*outline-offset: 3px;/, 'selected and hovered text should keep the same layout box while painting state affordances');
-  assert.doesNotMatch(css, /\.canvas-element\.text\.(?:selected|editing)[^{]*\.text-selection-frame[^}]*fit-content|\.canvas-element\.text:not\(\.selected\):not\(\.editing\):hover \.text-selection-frame[^}]*fit-content|\.canvas-element\.text\.(?:selected|editing)[^{]*\.text-content[^}]*fit-content|\.canvas-element\.text:not\(\.selected\):not\(\.editing\):hover \.text-content[^}]*fit-content/, 'text hover, selection, and edit states must not change text layout size');
+  assert.match(css, /\.canvas-element\.text \.text-selection-frame \{[^}]*display: inline-grid;[^}]*width: fit-content;[^}]*max-width: 100%;[^}]*height: auto;[^}]*outline-offset: 3px;/, 'selected and hovered text should paint affordances around the auto-fit text box');
+  assert.match(css, /\.canvas-element\.text\.selected \.text-drag-edge \{ display: block; \}/, 'selected text should expose enlarged border drag hit areas');
   assert.match(css, /\.canvas-element\.text\.selected:focus-visible \.text-selection-frame, \.canvas-element\.text:not\(\.selected\):not\(\.editing\):hover \.text-selection-frame, \.canvas-element\.text:not\(\.selected\):not\(\.editing\):focus-visible \.text-selection-frame \{ box-shadow: var\(--selectable-hover-glow\); \}/, 'keyboard-focused selected text should get the same visible focus glow as other selected elements');
   assert.match(app, /els\.elementInspector\.hidden = !element/, 'selected elements should reveal inspector controls');
   assert.match(css, /\.app-shell \{[^}]*grid-template-columns: minmax\(0, 1fr\) 6px var\(--inspector-panel-width\)/, 'app layout should remove the left column and reserve a wider right inspector');
@@ -130,6 +140,41 @@ test('pwa canvas: clicking elements selects them and reveals the inspector', () 
   assert.match(css, /\.inspector:has\(#elementInspector\[hidden\]\) > \* \{ display: none; \}/, 'right panel should be visually empty when no element is selected');
   assert.doesNotMatch(css, /\.app-shell:has\(#elementInspector:not\(\[hidden\]\)\) \.stage-wrap/, 'selection should not resize or repad the canvas viewport');
   assert.doesNotMatch(file('index.html'), /class="page-inspector"|id="backgroundControl"|id="applyBackgroundAllBtn"/, 'dead page-background inspector controls should be removed from the selected-element panel');
+});
+
+test('pwa canvas: text border inspector controls CSS border and export', () => {
+  const html = file('index.html');
+  const app = appSource();
+  const css = file('src/styles.css');
+
+  assert.match(html, /id="textBorderSection"[^>]*class="inspector-section"/, 'text border controls should be grouped in their own inspector section');
+  assert.match(html, /id="borderControl" type="checkbox"/, 'text border section should expose an enable checkbox');
+  assert.match(app, /borderPadding: 10/, 'new text elements should default border padding to 10px');
+  assert.match(app, /const textBorderPadding = \(element: any\): number => Math\.round\(clamp\(element\?\.borderPadding, TEXT_BORDER_PADDING_MIN, TEXT_BORDER_PADDING_MAX, TEXT_DEFAULT\.borderPadding\)\)/, 'missing stored/imported border padding should normalize to the default 10px');
+  assert.match(html, /id="borderPaddingSliderControl" type="range" min="0" max="120"/, 'text border padding should have a slider');
+  assert.match(html, /id="borderPaddingControl" type="number" min="0" max="120"/, 'text border padding should have a paired number input');
+  assert.match(html, /id="borderRadiusSliderControl" type="range" min="0" max="120"/, 'text border radius should have a slider');
+  assert.match(html, /id="borderRadiusControl" type="number" min="0" max="120"/, 'text border radius should have a paired number input');
+  assert.match(html, /id="borderColorControl" type="color"/, 'text border should have a dedicated color picker');
+  assert.match(html, /id="textBackgroundSection"[\s\S]*?id="textBackgroundOpacitySliderControl" type="range" min="0" max="100"[\s\S]*?id="textBackgroundOpacityControl" type="number" min="0" max="100"[\s\S]*?id="textBackgroundColorControl" type="color"/, 'text background controls should show opacity before the background color picker');
+  assert.match(app, /els\.textBackgroundSection\.hidden = !isText/, 'background controls should only appear for text selections');
+  assert.match(app, /textBackgroundOpacity\(element\)[\s\S]*?textBackgroundColor\(element\)/, 'text background controls should sync opacity and default black color');
+  assert.match(app, /els\.textBorderSection\.hidden = !isText/, 'border controls should only appear for text selections');
+  assert.match(app, /els\.borderPaddingSliderControl\.disabled = !enabled;[\s\S]*?els\.borderPaddingControl\.disabled = !enabled;[\s\S]*?els\.borderRadiusSliderControl\.disabled = !enabled;[\s\S]*?els\.borderRadiusControl\.disabled = !enabled;[\s\S]*?els\.borderColorControl\.disabled = !enabled;/, 'padding, radius, and color controls should disable when the border checkbox is unchecked');
+  assert.match(app, /el\.border = textBorderCss\(el\)/, 'enabling text border should reuse the CSS border shorthand');
+  assert.match(app, /return Boolean\(border\) && !\/\^\(\?:0\(\?:px\)\?\(\?:\\s\|\$\)\|none\$\)\/i\.test\(border\) && !\/\\bnone\\b\/i\.test\(border\)/, 'disabled CSS border shorthands should stay disabled during normalization');
+  assert.match(app, /backgroundColor: textBackgroundCss\(element\)[\s\S]*?padding: hasBorder \? `\$\{textBorderPadding\(element\)\}px` : '0'/, 'canvas text should render the configured background color, opacity, and border padding');
+  assert.match(app, /const hasBorder = hasTextBorder\(element\)/, 'canvas text should compute border enabled state once per style sync');
+  assert.match(app, /--text-background:\$\{textBackgroundCss\(element\)\}/, 'HTML export should preserve the text background setting');
+  assert.match(app, /--text-border-padding:\$\{textBorderPadding\(element\)\}px/, 'HTML export should preserve the text border padding setting');
+  assert.match(app, /const borderPadding = hasBorder \? textBorderPadding\(element\) \* fontScale : 0;[\s\S]*?const boxW = textW \+ \(borderPadding \* 2\);[\s\S]*?const boxH = textH \+ \(borderPadding \* 2\);/, 'PNG export should expand the border box around text by the configured padding');
+  assert.match(app, /const backgroundRadius = hasBorder \? textBorderRadius\(element\) \* fontScale : 0;[\s\S]*?const backgroundOpacity = textBackgroundOpacity\(element\);[\s\S]*?if \(backgroundOpacity > 0\)[\s\S]*?roundRect\(ctx, -boxW \/ 2, -boxH \/ 2, boxW, boxH, backgroundRadius\); ctx\.fill\(\)/, 'PNG export should draw visible text backgrounds before text with matching rounded corners');
+  assert.match(app, /border: hasBorder \? textBorderCss\(element\) : '0'/, 'canvas text should render the configured CSS border');
+  assert.match(app, /--text-border:\$\{textBorderCss\(element\)\}/, 'HTML export should preserve the CSS border setting');
+  assert.match(app, /roundRect\(ctx, -boxW \/ 2, -boxH \/ 2, boxW, boxH, backgroundRadius\); ctx\.stroke\(\)/, 'PNG export should draw the configured text border with the same radius as the background');
+  assert.match(css, /\.inspector-section\[hidden\] \{ display: none; \}/, 'hidden text-only inspector sections should stay hidden for non-text selections');
+  assert.match(css, /\.background-color-field input\[type="color"\]:disabled, \.border-color-field input\[type="color"\]:disabled \{ cursor: not-allowed; \}/, 'disabled border color controls should not advertise a pointer affordance');
+  assert.match(css, /\.text-border-row \{[^}]*grid-template-columns:[^}]*minmax\(0, 1\.2fr\)[^}]*minmax\(0, 1\.2fr\)/, 'border controls should sit together as one compact inspector row');
 });
 
 test('pwa canvas: image picker creates a visible safe image element', () => {
@@ -160,8 +205,8 @@ test('pwa canvas: image ratio lock and crop controls persist through render and 
   assert.doesNotMatch(html, /id="cropLeftControl"|id="cropRightControl"/, 'selected-element inspector should not expose left or right crop controls');
   assert.match(html, /id="cropTopControl" type="range" min="0" max="90"/, 'inspector should expose top crop control');
   assert.match(html, /id="cropBottomControl" type="range" min="0" max="90"/, 'inspector should expose bottom crop control');
-  assert.match(app, /els\.wControl\.closest\('\.field'\)\.hidden = false/, 'text selection should show width controls for text box sizing');
-  assert.match(app, /els\.hControl\.closest\('\.field'\)\.hidden = false/, 'text selection should show height controls for text box sizing');
+  assert.match(app, /els\.wControl\.closest\('\.field'\)\.hidden = isText/, 'text selection should hide width controls because text auto-fits content');
+  assert.match(app, /els\.hControl\.closest\('\.field'\)\.hidden = isText/, 'text selection should hide height controls because text auto-fits content');
   assert.match(app, /els\.textControl\.hidden = true/, 'hidden backing text control should never become visible in the inspector');
   assert.match(app, /els\.fontSizeControl\.closest\('\.field'\)\.hidden = !isText/, 'font size should remain the text-specific type size control');
   assert.match(app, /els\.fontControl\.oninput = \(\) => handleFontInput\(\);/, 'font control should use custom draft input handling instead of saving every keystroke');

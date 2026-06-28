@@ -234,11 +234,11 @@ function renderCanvas(project) {
     node.tabIndex = isEditingText ? -1 : 0;
     if (!isEditingText) {
       node.role = 'button';
-      node.ariaLabel = `${element.type} element. Arrow keys move; Shift plus arrow resizes.`;
+      node.ariaLabel = element.type === 'text' ? 'Text element. Press Enter or Space to edit; use arrow keys to move; drag the selection border to move.' : `${element.type} element. Arrow keys move; Shift plus arrow resizes.`;
       node.ariaPressed = element.id === selectedId ? 'true' : 'false';
     }
     if (element.type === 'text') {
-      node.innerHTML = `<div class="text-selection-frame"><div class="text-content"></div><span class="text-drag-edge drag-top"></span><span class="text-drag-edge drag-right"></span><span class="text-drag-edge drag-bottom"></span><span class="text-drag-edge drag-left"></span><span class="handle rotate"></span><span class="handle resize resize-top-left"></span><span class="handle resize resize-top-right"></span><span class="handle resize resize-bottom-right"></span><span class="handle resize resize-bottom-left"></span><span class="handle resize resize-right"></span><span class="handle resize resize-bottom"></span><span class="handle resize resize-left"></span><span class="handle resize resize-top"></span></div>`;
+      node.innerHTML = `<div class="text-selection-frame"><div class="text-content"></div><span class="text-drag-edge drag-top"></span><span class="text-drag-edge drag-right"></span><span class="text-drag-edge drag-bottom"></span><span class="text-drag-edge drag-left"></span><span class="handle rotate"></span></div>`;
       const text: any = node.querySelector('.text-content');
       text.contentEditable = isEditingText ? 'true' : 'false';
       text.textContent = element.text || '';
@@ -400,11 +400,13 @@ function handleElementKeydown(event) {
     return;
   }
   const delta = event.shiftKey ? 2 : 1;
+  const element = selected(current());
+  const canResize = event.shiftKey && element?.type !== 'text';
   const changes = {
-    ArrowLeft: event.shiftKey ? ['w', -delta] : ['x', -delta],
-    ArrowRight: event.shiftKey ? ['w', delta] : ['x', delta],
-    ArrowUp: event.shiftKey ? ['h', -delta] : ['y', -delta],
-    ArrowDown: event.shiftKey ? ['h', delta] : ['y', delta],
+    ArrowLeft: canResize ? ['w', -delta] : ['x', -delta],
+    ArrowRight: canResize ? ['w', delta] : ['x', delta],
+    ArrowUp: canResize ? ['h', -delta] : ['y', -delta],
+    ArrowDown: canResize ? ['h', delta] : ['y', delta],
   };
   const [field, amount] = changes[event.key];
   event.preventDefault();
@@ -418,6 +420,7 @@ function handleElementKeydown(event) {
 }
 
 function selectElement(id, options = {}) {
+  if (liveTextStyleBefore && !commitLiveTextStyleEdit('selectElement:textStyleEdit')) return;
   selectedId = id;
   saveUiState('selectElement');
   // @ts-ignore options is a tiny local bag kept untyped for call-site simplicity.
@@ -440,6 +443,7 @@ function focusTextInspector() {
 }
 
 function clearElementSelection() {
+  if (liveTextStyleBefore && !commitLiveTextStyleEdit('clearElementSelection:textStyleEdit')) return;
   if (!selectedId && !editingId) return;
   selectedId = null;
   editingId = null;
@@ -504,10 +508,12 @@ function renderInspector(project) {
   const isText = element.type === 'text';
   const isImage = element.type === 'image';
   els.textControl.hidden = true;
-  els.wControl.closest('.field').hidden = false;
-  els.hControl.closest('.field').hidden = false;
+  els.wControl.closest('.field').hidden = isText;
+  els.hControl.closest('.field').hidden = isText;
   els.fontSizeControl.closest('.field').hidden = !isText;
   els.fontControl.closest('.field').hidden = !isText;
+  els.textBackgroundSection.hidden = !isText;
+  els.textBorderSection.hidden = !isText;
   if (isImage) element.aspectLocked = true;
   els.cropFields.hidden = !isImage;
   els.textControl.value = element.text || '';
@@ -518,7 +524,35 @@ function renderInspector(project) {
   }
   syncFontSizeControls(element.fontSize || TEXT_DEFAULT.fontSize);
   els.colorControl.value = element.color || '#ffffff';
+  if (isText) {
+    syncTextBackgroundControls(element);
+    syncTextBorderControls(element);
+  }
   if (document.activeElement !== els.fontControl) els.fontControl.value = element.font || TEXT_DEFAULT.font;
+}
+
+function syncTextBackgroundControls(element) {
+  const opacity = textBackgroundOpacity(element);
+  els.textBackgroundOpacitySliderControl.value = opacity;
+  els.textBackgroundOpacityControl.value = opacity;
+  els.textBackgroundColorControl.value = textBackgroundColor(element);
+}
+
+function syncTextBorderControls(element) {
+  const enabled = hasTextBorder(element);
+  const radius = textBorderRadius(element);
+  const padding = textBorderPadding(element);
+  els.borderControl.checked = enabled;
+  els.borderPaddingSliderControl.value = padding;
+  els.borderPaddingControl.value = padding;
+  els.borderRadiusSliderControl.value = radius;
+  els.borderRadiusControl.value = radius;
+  els.borderColorControl.value = textBorderColor(element);
+  els.borderPaddingSliderControl.disabled = !enabled;
+  els.borderPaddingControl.disabled = !enabled;
+  els.borderRadiusSliderControl.disabled = !enabled;
+  els.borderRadiusControl.disabled = !enabled;
+  els.borderColorControl.disabled = !enabled;
 }
 
 function startCanvasTextEdit(id, options: any = {}) {

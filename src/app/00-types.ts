@@ -54,6 +54,12 @@ interface TextElement extends BaseElement {
   italic: boolean;
   underline?: boolean;
   textAlign?: 'left' | 'center' | 'right';
+  backgroundColor?: string;
+  backgroundOpacity?: number;
+  border?: string;
+  borderColor?: string;
+  borderRadius?: number;
+  borderPadding?: number;
 }
 
 interface ShapeElement extends BaseElement {
@@ -116,6 +122,7 @@ interface Command {
   shortcut: string | (() => string);
   keywords: string;
   needsSelection?: boolean;
+  canApply?: (element: ProjectElement | undefined | null) => boolean;
   opensSurface?: boolean;
   axis?: Axis;
   position?: AlignmentPosition;

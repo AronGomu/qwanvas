@@ -47,6 +47,7 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .inspector h2 { margin: 0 0 .6rem; font-size: clamp(1rem, 1.2vw, 1.5rem); }
 .field { display: grid; gap: .25rem; margin-bottom: clamp(.38rem, .55vw, .75rem); color: var(--muted); font-size: clamp(.72rem, .78vw, .86rem); }
 .field input, .field textarea, .field select { width: 100%; border: 1px solid var(--border); border-radius: 12px; background: #0f172a; color: var(--text); padding: clamp(.38rem, .55vw, .65rem); resize: none; }
+.field input:disabled, .field select:disabled { opacity: .45; cursor: not-allowed; }
 .field input[aria-invalid="true"] { border-color: #f59e0b; box-shadow: 0 0 0 2px rgb(245 158 11 / .18); }
 .font-field { position: relative; }
 .font-results { position: absolute; z-index: 20; top: calc(100% - .1rem); left: 0; right: 0; display: grid; max-height: min(18rem, 48vh); overflow: auto; padding: .25rem; border: 1px solid var(--border); border-radius: 12px; background: #020617; box-shadow: 0 18px 48px rgb(0 0 0 / .38); }
@@ -59,6 +60,14 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .color-controls { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
 .color-controls button, .color-controls input[type="color"] { width: 1.65rem; height: 1.65rem; min-width: 0; padding: 0; border-radius: 8px; border: 1px solid var(--border); background: var(--swatch, transparent); }
 .color-controls input[type="color"] { overflow: hidden; cursor: pointer; }
+.inspector-section { display: grid; gap: .55rem; margin: .15rem 0 clamp(.45rem, .65vw, .8rem); padding: .65rem; border: 1px solid rgb(116 166 255 / .22); border-radius: 16px; background: rgb(2 6 23 / .3); }
+.inspector-section[hidden] { display: none; }
+.inspector-section h3 { margin: 0; color: var(--text); font-size: clamp(.78rem, .84vw, .92rem); }
+.inspector-section .field { margin-bottom: 0; }
+.text-background-row { display: grid; grid-template-columns: minmax(0, 1fr) 3.25rem; gap: .45rem; align-items: end; }
+.text-border-row { display: grid; grid-template-columns: minmax(6.5rem, .8fr) minmax(0, 1.2fr) minmax(0, 1.2fr) 3.25rem; gap: .45rem; align-items: end; }
+.background-color-field input[type="color"], .border-color-field input[type="color"] { min-height: 2.25rem; padding: 0; overflow: hidden; cursor: pointer; }
+.background-color-field input[type="color"]:disabled, .border-color-field input[type="color"]:disabled { cursor: not-allowed; }
 .inspector-delete { align-self: flex-end; margin-top: auto; min-width: 2.75rem; font-size: 1rem; }
 .check-field { display: flex; align-items: center; gap: .5rem; }
 .check-field input { width: auto; }
@@ -102,13 +111,15 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .canvas-element.selected { outline: 2px solid var(--brand); }
 .canvas-element.selected:focus-visible { box-shadow: var(--selectable-hover-glow); }
 .canvas-element.text.selected, .canvas-element.text:not(.selected):not(.editing):hover, .canvas-element.text:not(.selected):not(.editing):focus-visible { outline: 0; box-shadow: none; }
-.canvas-element.text .text-selection-frame { position: relative; display: grid; place-items: start stretch; align-items: start; width: 100%; height: 100%; outline-offset: 3px; }
+.canvas-element.text { box-sizing: content-box; width: fit-content; max-width: calc(var(--w) * 1cqw); height: auto; padding: 20px; place-items: start; }
+.canvas-element.text .text-selection-frame { position: relative; display: inline-grid; place-items: start; align-items: start; width: fit-content; max-width: 100%; height: auto; outline-offset: 3px; }
 .canvas-element.text.selected .text-selection-frame { outline: 2px solid var(--brand); }
 .canvas-element.text.selected:focus-visible .text-selection-frame, .canvas-element.text:not(.selected):not(.editing):hover .text-selection-frame, .canvas-element.text:not(.selected):not(.editing):focus-visible .text-selection-frame { box-shadow: var(--selectable-hover-glow); }
 .canvas-element.text:not(.selected):not(.editing):hover .text-selection-frame, .canvas-element.text:not(.selected):not(.editing):focus-visible .text-selection-frame { outline: var(--selectable-hover-outline); }
 .canvas-element.editing { cursor: text; user-select: text; }
 .canvas-element.editing.selected .handle { display: block; }
-.canvas-element .text-content { width: 100%; min-height: 1em; align-self: start; justify-self: stretch; white-space: pre-wrap; line-height: 1.05; overflow-wrap: anywhere; cursor: inherit; }
+.canvas-element.text.editing.selected .handle.resize { display: none; }
+.canvas-element .text-content { box-sizing: border-box; display: inline-block; width: fit-content; max-width: 100%; height: auto; min-height: 1em; align-self: start; justify-self: start; white-space: pre-wrap; line-height: 1.05; overflow-wrap: anywhere; cursor: text; }
 .canvas-element .text-content[contenteditable="true"] { caret-color: currentColor; outline: 0; user-select: text; }
 .canvas-element.shape { border-radius: 18px; background: var(--element-color, #74a6ff); box-shadow: 0 16px 40px rgb(0 0 0 / .25); }
 .canvas-element.image { overflow: hidden; }
@@ -125,13 +136,13 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 .handle.resize-top { top: -18px; left: 50%; right: auto; bottom: auto; transform: translateX(-50%); cursor: ns-resize; }
 .handle.rotate { top: -92px; left: 50%; transform: translateX(-50%); cursor: grab; }
 .text-drag-edge { position: absolute; z-index: 2; display: none; background: transparent; }
-.canvas-element.text.editing.selected .text-drag-edge { display: block; }
-.text-drag-edge.drag-top, .text-drag-edge.drag-bottom { left: 0; right: 0; height: 24px; cursor: move; }
-.text-drag-edge.drag-top { top: -12px; }
-.text-drag-edge.drag-bottom { bottom: -12px; }
-.text-drag-edge.drag-left, .text-drag-edge.drag-right { top: 0; bottom: 0; width: 24px; cursor: move; }
-.text-drag-edge.drag-left { left: -12px; }
-.text-drag-edge.drag-right { right: -12px; }
+.canvas-element.text.selected .text-drag-edge { display: block; }
+.text-drag-edge.drag-top, .text-drag-edge.drag-bottom { left: -20px; right: -20px; height: 20px; cursor: move; }
+.text-drag-edge.drag-top { top: -20px; }
+.text-drag-edge.drag-bottom { bottom: -20px; }
+.text-drag-edge.drag-left, .text-drag-edge.drag-right { top: 0; bottom: 0; width: 20px; cursor: move; }
+.text-drag-edge.drag-left { left: -20px; }
+.text-drag-edge.drag-right { right: -20px; }
 .handle.crop { background: #f8fafc; border-color: var(--brand); }
 .handle.crop-left { left: -8px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }
 .handle.crop-right { right: -8px; top: 50%; transform: translateY(-50%); cursor: ew-resize; }

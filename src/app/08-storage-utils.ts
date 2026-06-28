@@ -80,6 +80,7 @@ function normalizeStoredElement(element) {
     stored.italic = Boolean(element.italic);
     stored.underline = Boolean(element.underline);
     stored.textAlign = ['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : TEXT_DEFAULT.textAlign;
+    Object.assign(stored, normalizedTextVisualStyle(element));
   }
   if (stored.type === 'shape') stored.color = String(element.color || SHAPE_DEFAULT.color);
   if (stored.type === 'image') return { ...stored, src: safeImageSrc(element.src || ''), ...normalizeImageSettings(element, stored) };

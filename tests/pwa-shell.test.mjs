@@ -65,6 +65,8 @@ test('pwa shell: required offline editor assets and controls stay wired', () => 
   assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'Times New Roman'[\s\S]*?\] as const;/);
   assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'Verdana'[\s\S]*?\] as const;/);
   assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'Consolas'[\s\S]*?\] as const;/);
+  assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'IBM Plex Sans'[\s\S]*?\] as const;/);
+  assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'JetBrains Mono'[\s\S]*?\] as const;/);
   assert.match(app, /const FONT_OPTIONS = \[[\s\S]*?'Roboto'[\s\S]*?\] as const;/);
   assert.doesNotMatch(html, /Generate draft|ideaInput|boldBtn|italicBtn/, 'AI prompt flow and legacy text-style buttons should remain outside the app');
 

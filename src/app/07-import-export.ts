@@ -53,8 +53,8 @@ body { margin: 0; min-height: 100vh; display: grid; gap: 2rem; place-items: cent
 .qwanvas-background-image { position: absolute; left: calc(var(--x) * 1%); top: calc(var(--y) * 1%); width: calc(var(--w) * 1%); height: calc(var(--h) * 1%); transform: translate(-50%, -50%) rotate(calc(var(--r) * 1deg)); overflow: hidden; z-index: 0; }
 .qwanvas-background-image img { width: var(--crop-img-w, 100%); height: var(--crop-img-h, 100%); margin-left: var(--crop-offset-x, 0%); margin-top: var(--crop-offset-y, 0%); object-fit: fill; display: block; }
 .qwanvas-element { position: absolute; left: calc(var(--x) * 1%); top: calc(var(--y) * 1%); width: calc(var(--w) * 1%); height: calc(var(--h) * 1%); transform: translate(-50%, -50%) rotate(calc(var(--r) * 1deg)); display: grid; place-items: center; color: var(--element-color, white); z-index: var(--z, 1); }
-.qwanvas-element[data-type="text"] { place-items: start stretch; align-items: start; }
-.qwanvas-text { width: 100%; align-self: start; justify-self: stretch; white-space: pre-wrap; line-height: 1.05; overflow-wrap: anywhere; text-align: var(--text-align, left); text-decoration: var(--text-decoration, none); font-family: var(--font, Inter, sans-serif); font-size: calc(var(--font-size, 42) * .095vw); font-weight: var(--font-weight, 500); font-style: var(--font-style, normal); }
+.qwanvas-element[data-type="text"] { width: fit-content; max-width: calc(var(--w) * 1%); height: auto; place-items: start; align-items: start; }
+.qwanvas-text { box-sizing: border-box; display: inline-block; width: fit-content; max-width: 100%; height: auto; align-self: start; justify-self: start; white-space: pre-wrap; line-height: 1.05; overflow-wrap: anywhere; text-align: var(--text-align, left); text-decoration: var(--text-decoration, none); font-family: var(--font, Inter, sans-serif); font-size: calc(var(--font-size, 42) * .095vw); font-weight: var(--font-weight, 500); font-style: var(--font-style, normal); background: var(--text-background, transparent); border: var(--text-border, 0); border-radius: var(--text-border-radius, 0); padding: var(--text-border-padding, 0); }
 .qwanvas-text h1, .qwanvas-text h2, .qwanvas-text h3, .qwanvas-text h4, .qwanvas-text h5, .qwanvas-text h6, .qwanvas-text p { margin: 0 0 .25em; }
 .qwanvas-text h1 { font-size: 1.55em; } .qwanvas-text h2 { font-size: 1.35em; } .qwanvas-text h3 { font-size: 1.18em; }
 .qwanvas-text ul, .qwanvas-text ol { display: inline-block; margin: .15em 0; padding-left: 1.25em; text-align: left; }
@@ -88,7 +88,9 @@ function renderExportBackgroundImage(backgroundImage) {
 function renderExportElement(element) {
   const style = `--x:${element.x};--y:${element.y};--w:${element.w};--h:${element.h};--r:${element.rotation || 0};--z:${element.z || 1};--element-color:${element.color || '#fff'};${cropStyleVars(element)}`;
   if (element.type === 'text') {
-    const textStyle = `--font-size:${element.fontSize || 42};--font:${escapeAttr(element.font || 'Inter')};--font-weight:${element.bold ? 800 : 500};--font-style:${element.italic ? 'italic' : 'normal'};--text-decoration:${element.underline ? 'underline' : 'none'};--text-align:${element.textAlign || TEXT_DEFAULT.textAlign}`;
+    const borderStyle = hasTextBorder(element) ? `;--text-border:${textBorderCss(element)};--text-border-radius:${textBorderRadius(element)}px;--text-border-padding:${textBorderPadding(element)}px` : '';
+    const backgroundStyle = `;--text-background:${textBackgroundCss(element)}`;
+    const textStyle = `--font-size:${element.fontSize || 42};--font:${escapeAttr(element.font || 'Inter')};--font-weight:${element.bold ? 800 : 500};--font-style:${element.italic ? 'italic' : 'normal'};--text-decoration:${element.underline ? 'underline' : 'none'};--text-align:${element.textAlign || TEXT_DEFAULT.textAlign}${backgroundStyle}${borderStyle}`;
     return `        <div class="qwanvas-element" data-element-id="${escapeAttr(element.id)}" data-type="text" style="${escapeAttr(style)}"><div class="qwanvas-text" style="${textStyle}">${plainTextToHtml(element.text || '')}</div></div>`;
   }
   if (element.type === 'image') {
@@ -149,7 +151,7 @@ function normalizeBackgroundImage(backgroundImage, page) {
 
 function normalizeImportedElement(element) {
   if (!element || !['text', 'image', 'shape'].includes(element.type)) return null;
-  const imported = {
+  const imported: any = {
     id: uid(),
     type: element.type,
     text: String(element.text || ''),
@@ -168,6 +170,9 @@ function normalizeImportedElement(element) {
     underline: Boolean(element.underline),
     textAlign: ['left', 'center', 'right'].includes(element.textAlign) ? element.textAlign : TEXT_DEFAULT.textAlign,
   };
+  if (imported.type === 'text') {
+    Object.assign(imported, normalizedTextVisualStyle(element));
+  }
   if (imported.type === 'image') Object.assign(imported, normalizeImageSettings(element, imported));
   return imported;
 }
@@ -222,10 +227,33 @@ async function drawElement(ctx, element, size = CANVAS_SIZE_DEFAULT) {
   if (element.type === 'image') await drawImageElement(ctx, element, w, h);
   if (element.type === 'text') {
     const fontScale = size.width / CANVAS_SIZE_DEFAULT.width;
-    ctx.fillStyle = element.color || '#fff'; ctx.font = `${element.italic ? 'italic ' : ''}${element.bold ? '800' : '500'} ${element.fontSize * 2.1 * fontScale}px ${element.font || 'Inter'}`;
+    const fontSize = (element.fontSize || TEXT_DEFAULT.fontSize) * 2.1 * fontScale;
+    const lineHeight = (element.fontSize || TEXT_DEFAULT.fontSize) * 2.35 * fontScale;
+    ctx.font = `${element.italic ? 'italic ' : ''}${element.bold ? '800' : '500'} ${fontSize}px ${element.font || 'Inter'}`;
+    const hasBorder = hasTextBorder(element);
+    const borderPadding = hasBorder ? textBorderPadding(element) * fontScale : 0;
+    const maxTextW = Math.max(1, w - (borderPadding * 2));
+    const wrapped = wrappedTextLines(ctx, element.text || '', maxTextW);
+    const lines = wrapped.lines;
+    const textW = Math.min(maxTextW, Math.max(1, wrapped.maxLineWidth));
+    const textH = Math.max(lineHeight, lines.length * lineHeight);
+    const boxW = textW + (borderPadding * 2);
+    const boxH = textH + (borderPadding * 2);
+    const backgroundRadius = hasBorder ? textBorderRadius(element) * fontScale : 0;
+    const backgroundOpacity = textBackgroundOpacity(element);
+    if (backgroundOpacity > 0) {
+      ctx.fillStyle = textBackgroundCss(element);
+      if (backgroundRadius > 0) { roundRect(ctx, -boxW / 2, -boxH / 2, boxW, boxH, backgroundRadius); ctx.fill(); }
+      else ctx.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+    }
+    if (hasBorder) {
+      ctx.strokeStyle = textBorderColor(element); ctx.lineWidth = TEXT_BORDER_WIDTH * fontScale;
+      roundRect(ctx, -boxW / 2, -boxH / 2, boxW, boxH, backgroundRadius); ctx.stroke();
+    }
+    ctx.fillStyle = element.color || '#fff';
     const textAlign = element.textAlign || TEXT_DEFAULT.textAlign;
-    const textX = textAlign === 'left' ? -w / 2 : textAlign === 'right' ? w / 2 : 0;
-    ctx.textAlign = textAlign; ctx.textBaseline = 'middle'; wrapText(ctx, element.text || '', textX, 0, w, element.fontSize * 2.35 * fontScale);
+    const textX = textAlign === 'left' ? -boxW / 2 + borderPadding : textAlign === 'right' ? boxW / 2 - borderPadding : 0;
+    ctx.textAlign = textAlign; ctx.textBaseline = 'middle'; drawTextLines(ctx, lines, textX, lineHeight);
   }
   ctx.restore();
 }
@@ -239,13 +267,32 @@ async function drawImageElement(ctx, element, w, h) {
   ctx.drawImage(img, sourceX, sourceY, sourceW, sourceH, -w / 2, -h / 2, w, h);
 }
 function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect?.(x, y, w, h, r) || ctx.rect(x, y, w, h); }
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-  const lines = String(text).split('\n').flatMap((line) => {
-    const words = line.split(' '), out = []; let cur = '';
-    for (const word of words) { const test = cur ? `${cur} ${word}` : word; if (ctx.measureText(test).width > maxWidth && cur) { out.push(cur); cur = word; } else cur = test; }
-    out.push(cur); return out;
-  });
-  const start = y - ((lines.length - 1) * lineHeight) / 2;
+function wrappedTextLines(ctx, text, maxWidth) {
+  const lines = [];
+  let maxLineWidth = 0;
+  const pushLine = (line, width = ctx.measureText(line || ' ').width) => { lines.push(line); maxLineWidth = Math.max(maxLineWidth, width); };
+  const appendSegment = (segment, state) => {
+    const test = state.current + segment;
+    const testWidth = ctx.measureText(test || ' ').width;
+    if (testWidth <= maxWidth) { state.current = test; state.width = testWidth; return; }
+    if (state.current) { pushLine(state.current, state.width); state.current = ''; state.width = 0; appendSegment(segment, state); return; }
+    for (const char of segment) {
+      const charTest = state.current + char;
+      const charWidth = ctx.measureText(charTest || ' ').width;
+      if (charWidth > maxWidth && state.current) { pushLine(state.current, state.width); state.current = char === ' ' ? '' : char; state.width = ctx.measureText(state.current || ' ').width; }
+      else { state.current = charTest; state.width = charWidth; }
+    }
+  };
+  for (const rawLine of String(text).split('\n')) {
+    const state = { current: '', width: 0 };
+    for (const segment of rawLine.split(/(\s+)/).filter(Boolean)) appendSegment(segment, state);
+    pushLine(state.current, state.width);
+  }
+  return { lines, maxLineWidth };
+}
+
+function drawTextLines(ctx, lines, x, lineHeight) {
+  const start = -((lines.length - 1) * lineHeight) / 2;
   lines.forEach((line, i) => ctx.fillText(line, x, start + i * lineHeight));
 }
 

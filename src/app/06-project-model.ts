@@ -1,14 +1,29 @@
-function undo() { if (!undoHistory.length || !current()) return; future.push(clone(current())); replaceCurrent(undoHistory.pop()); }
-function redo() { if (!future.length || !current()) return; undoHistory.push(clone(current())); replaceCurrent(future.pop()); }
+function undo() {
+  if (liveTextStyleBefore && !commitLiveTextStyleEdit('undo:textStyleEdit')) return;
+  if (!undoHistory.length || !current()) return;
+  const beforeUndo = clone(undoHistory), beforeFuture = clone(future);
+  const target = undoHistory.pop();
+  future.push(clone(current()));
+  if (!replaceCurrent(target)) { undoHistory = beforeUndo; future = beforeFuture; }
+}
+function redo() {
+  if (liveTextStyleBefore && !commitLiveTextStyleEdit('redo:textStyleEdit')) return;
+  if (!future.length || !current()) return;
+  const beforeUndo = clone(undoHistory), beforeFuture = clone(future);
+  const target = future.pop();
+  undoHistory.push(clone(current()));
+  if (!replaceCurrent(target)) { undoHistory = beforeUndo; future = beforeFuture; }
+}
 function replaceCurrent(project) {
-  if (!project || !currentId) return;
+  if (!project || !currentId) return false;
   const before = clone(projects);
   syncProjectFileMetadata(project);
   projects = projects.map((p) => p.id === currentId ? project : p);
-  if (!saveProjects('replaceCurrent')) { projects = before; showSaveError(); }
+  if (!saveProjects('replaceCurrent')) { projects = before; showSaveError(); return false; }
   selectedId = selected(current())?.id || null;
   saveUiState('replaceCurrent');
   render();
+  return true;
 }
 function withNewCurrent(project) {
   const error = projectNameError(project.name, project.id);

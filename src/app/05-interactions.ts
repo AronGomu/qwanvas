@@ -7,19 +7,9 @@ function startDrag(event) {
   const cropSide = [...event.target.classList].find((className) => className.startsWith('crop-'))?.replace('crop-', '');
   const resizeSide = [...event.target.classList].find((className) => className.startsWith('resize-'))?.replace('resize-', '');
   const mode = cropSide ? 'crop' : event.target.classList.contains('resize') ? 'resize' : event.target.classList.contains('rotate') ? 'rotate' : 'move';
-  const textBodyClick = element?.type === 'text' && mode === 'move' && event.target.closest?.('.text-content') && !event.target.closest?.('.text-drag-edge');
-  if (event.target.isContentEditable && !textBodyClick) return;
-  if (textBodyClick) {
-    pendingTextDrag = { id, startX: event.clientX, startY: event.clientY, rect, before: clone(project), element: clone(element), node, pointerId: event.pointerId, wasEditing: editingId === id };
-    if (editingId !== id) selectElement(id, { renderCanvasToo: false });
-    node.setPointerCapture(event.pointerId);
-    node.onpointermove = onPendingTextDragMove;
-    node.onpointerup = node.onpointercancel = endPendingTextDrag;
-    addEventListener('pointermove', onPendingTextDragMove);
-    addEventListener('pointerup', endPendingTextDrag, { once: true });
-    addEventListener('pointercancel', endPendingTextDrag, { once: true });
-    return;
-  }
+  const textEdgeDrag = element?.type === 'text' && mode === 'move' && event.target.closest?.('.text-drag-edge');
+  if (event.target.isContentEditable) return;
+  if (element?.type === 'text' && mode === 'move' && !textEdgeDrag) return;
   beginElementDrag(event, { node, id, project, element, rect, cropSide, resizeSide, mode });
 }
 
@@ -34,36 +24,6 @@ function beginElementDrag(event, context) {
   event.preventDefault();
 }
 
-function onPendingTextDragMove(event) {
-  if (!pendingTextDrag) return;
-  const distance = Math.hypot(event.clientX - pendingTextDrag.startX, event.clientY - pendingTextDrag.startY);
-  if (distance < 4) return;
-  const pending = pendingTextDrag;
-  pendingTextDrag = null;
-  removeEventListener('pointermove', onPendingTextDragMove);
-  removeEventListener('pointerup', endPendingTextDrag);
-  removeEventListener('pointercancel', endPendingTextDrag);
-  pending.node.onpointermove = onDrag;
-  pending.node.onpointerup = pending.node.onpointercancel = endDrag;
-  addEventListener('pointermove', onDrag);
-  addEventListener('pointerup', endDrag, { once: true });
-  addEventListener('pointercancel', endDrag, { once: true });
-  if (editingId === pending.id) finishCanvasTextEdit({ render: false });
-  drag = { mode: 'move', cropSide: null, resizeSide: null, id: pending.id, startX: pending.startX, startY: pending.startY, rect: pending.rect, before: pending.before, element: pending.element };
-  event.preventDefault();
-  onDrag(event);
-}
-
-function endPendingTextDrag(event) {
-  const pending = pendingTextDrag;
-  if (pending) pending.node.onpointermove = pending.node.onpointerup = pending.node.onpointercancel = null;
-  removeEventListener('pointermove', onPendingTextDragMove);
-  removeEventListener('pointerup', endPendingTextDrag);
-  removeEventListener('pointercancel', endPendingTextDrag);
-  pendingTextDrag = null;
-  if (pending && event.type !== 'pointercancel' && !pending.wasEditing) startCanvasTextEdit(pending.id);
-}
-
 function onDrag(event) {
   if (!drag) return;
   const project = current();
@@ -72,7 +32,7 @@ function onDrag(event) {
   if (drag.mode === 'move') {
     element.x = clamp(drag.element.x + ((event.clientX - drag.startX) / drag.rect.width) * 100, 0, 100);
     element.y = clamp(drag.element.y + ((event.clientY - drag.startY) / drag.rect.height) * 100, 0, 100);
-  } else if (drag.mode === 'resize') {
+  } else if (drag.mode === 'resize' && element.type !== 'text') {
     resizeElement(element, event);
   } else if (drag.mode === 'crop') {
     cropImageSide(element, event);
@@ -129,7 +89,7 @@ function updateSelectionToolbars() {
   if (!selectedId) return;
   const element = selected(current());
   if (!element) return;
-  const placement = selectionToolbarPlacementFromModel(element);
+  const placement = selectionToolbarPlacement(element);
   els.canvas.querySelectorAll('.selection-toolbar').forEach((toolbar: any) => {
     toolbar.style.setProperty('--toolbar-left', `${placement.left}%`);
     toolbar.style.setProperty('--toolbar-right', `${placement.right}%`);
@@ -138,10 +98,6 @@ function updateSelectionToolbars() {
     toolbar.style.setProperty('--toolbar-side-x', `${placement.right > 84 ? placement.left - 3.2 : placement.right + 3.2}%`);
     toolbar.classList.toggle('flipped', toolbar.classList.contains('vertical-align') && placement.right > 84);
   });
-}
-
-function selectionToolbarPlacementFromModel(element) {
-  return { left: element.x - element.w / 2, right: element.x + element.w / 2, top: element.y - element.h / 2, bottom: element.y + element.h / 2 };
 }
 
 function cropImageSide(element, event) {
@@ -224,7 +180,85 @@ function applyElementStyle(element) {
 
 function applyTextStyle(text, element) {
   if (!text) return;
-  Object.assign(text.style, { fontSize: `calc(${element.fontSize || TEXT_DEFAULT.fontSize} / var(--page-width, ${CANVAS_SIZE_DEFAULT.width}) * 100cqw)`, fontFamily: element.font || 'Inter', fontWeight: element.bold ? '800' : '500', fontStyle: element.italic ? 'italic' : 'normal', textDecoration: element.underline ? 'underline' : 'none', textAlign: element.textAlign || TEXT_DEFAULT.textAlign, color: element.color || '#fff' });
+  const hasBorder = hasTextBorder(element);
+  Object.assign(text.style, { fontSize: `calc(${element.fontSize || TEXT_DEFAULT.fontSize} / var(--page-width, ${CANVAS_SIZE_DEFAULT.width}) * 100cqw)`, fontFamily: element.font || 'Inter', fontWeight: element.bold ? '800' : '500', fontStyle: element.italic ? 'italic' : 'normal', textDecoration: element.underline ? 'underline' : 'none', textAlign: element.textAlign || TEXT_DEFAULT.textAlign, color: element.color || '#fff', backgroundColor: textBackgroundCss(element), border: hasBorder ? textBorderCss(element) : '0', borderRadius: hasBorder ? `${textBorderRadius(element)}px` : '0', padding: hasBorder ? `${textBorderPadding(element)}px` : '0' });
+}
+
+function beginLiveTextStyleEdit() {
+  if (!liveTextStyleBefore && current()) { liveTextStyleBefore = clone(current()); liveTextStyleBeforeProjects = clone(projects); }
+}
+
+function commitLiveTextStyleEdit(operation = 'textStyleEdit') {
+  if (!liveTextStyleBefore || !current()) return true;
+  flushPendingTextFit();
+  const before = liveTextStyleBefore;
+  const beforeProjects = liveTextStyleBeforeProjects;
+  const beforeHistory = clone(undoHistory);
+  const beforeFuture = clone(future);
+  liveTextStyleBefore = null;
+  liveTextStyleBeforeProjects = null;
+  if (JSON.stringify(before) !== JSON.stringify(current())) { undoHistory.push(before); future = []; }
+  if (!saveProjects(operation)) {
+    if (beforeProjects) projects = beforeProjects;
+    undoHistory = beforeHistory;
+    future = beforeFuture;
+    showSaveError();
+    render();
+    return false;
+  }
+  saveUiState(operation);
+  return true;
+}
+
+function updateSelectedTextStyleLive(fn) {
+  const project = current();
+  const element = selected(project);
+  if (!project || element?.type !== 'text') return null;
+  beginLiveTextStyleEdit();
+  fn(element);
+  project.updatedAt = Date.now();
+  applyElementStyle(element);
+  syncGeometryControls(element);
+  updateSelectionToolbars();
+  return element;
+}
+
+function applyTextFit(id) {
+  const project = current();
+  const element = activePage(project)?.elements.find((candidate) => candidate.id === id && candidate.type === 'text');
+  const text = els.canvas.querySelector(`[data-id="${CSS.escape(id)}"] .text-content`) as HTMLElement | null;
+  const canvasRect = els.canvas.getBoundingClientRect();
+  if (!project || !element || !text || !canvasRect.width || !canvasRect.height) return;
+  const nextW = Math.round(clamp((text.offsetWidth / canvasRect.width) * 100, 1, 100, element.w) * 100) / 100;
+  const nextH = Math.round(clamp((text.offsetHeight / canvasRect.height) * 100, 1, 100, element.h) * 100) / 100;
+  if (Math.abs(nextW - element.w) < .01 && Math.abs(nextH - element.h) < .01) return;
+  element.w = nextW;
+  element.h = nextH;
+  project.updatedAt = Date.now();
+  applyElementStyle(element);
+  updateSelectionToolbars();
+  syncGeometryControls(element);
+}
+
+function flushPendingTextFit() {
+  if (!pendingTextFitFrame || !pendingTextFitId) return;
+  cancelAnimationFrame(pendingTextFitFrame);
+  const id = pendingTextFitId;
+  pendingTextFitFrame = 0;
+  pendingTextFitId = null;
+  applyTextFit(id);
+}
+
+function fitTextElementToRenderedContent(id = selectedId, options: any = {}) {
+  if (!id) return;
+  if (pendingTextFitFrame) cancelAnimationFrame(pendingTextFitFrame);
+  pendingTextFitId = id;
+  pendingTextFitFrame = requestAnimationFrame(() => {
+    pendingTextFitFrame = 0;
+    pendingTextFitId = null;
+    applyTextFit(id);
+    if (options.commit) commitLiveTextStyleEdit(options.operation || 'fitTextElementToRenderedContent');
+  });
 }
 
 function syncGeometryControls(element) {
@@ -261,6 +295,7 @@ function endDrag(event) {
 
 function mutate(fn, record = true, operation = 'mutate') {
   if (!current()) return;
+  if (liveTextStyleBefore && !commitLiveTextStyleEdit(`${operation}:textStyleEdit`)) return;
   const beforeProject = clone(current());
   const beforeProjects = clone(projects);
   const beforeHistory = clone(undoHistory);
@@ -353,11 +388,7 @@ function widthHeightRatio(element, rect = CANVAS_SIZE_DEFAULT) {
 }
 
 function setElementSize(element, { w = element.w, h = element.h, source, from, rect = els.canvas.getBoundingClientRect(), max = 100 }: any = {}) {
-  if (element.type === 'text') {
-    element.w = clamp(w, 3, max);
-    element.h = clamp(h, 3, max);
-    return;
-  }
+  if (element.type === 'text') return;
   if (element.type !== 'image' || isUnlockedBackgroundImage(element)) {
     element.w = clamp(w, 3, max);
     element.h = clamp(h, 3, max);

@@ -127,7 +127,7 @@ function renderCommandPalette() {
     button.type = 'button';
     button.id = `command-option-${command.id}`;
     button.className = `command-item ${index === activeCommandIndex ? 'active' : ''}`;
-    button.disabled = (command.needsSelection && !selectedId) || (!current() && !['new-project', 'recent-project', 'import-html'].includes(command.id));
+    button.disabled = (command.needsSelection && (!selectedId || !commandCanApply(command, selected(current())))) || (!current() && !['new-project', 'recent-project', 'import-html'].includes(command.id));
     button.tabIndex = -1;
     button.setAttribute('role', 'option');
     button.setAttribute('aria-selected', index === activeCommandIndex ? 'true' : 'false');
@@ -353,13 +353,17 @@ function runCommand(command, query) {
     els.commandStatus.textContent = 'Create, import, or open a project first.';
     return;
   }
-  if (command.needsSelection && !selectedId) {
-    els.commandStatus.textContent = 'Select an element first, then run this command.';
+  if (command.needsSelection && (!selectedId || !commandCanApply(command, selected(current())))) {
+    els.commandStatus.textContent = 'Select a compatible element first, then run this command.';
     return;
   }
   const commandText = commandQuery(query);
   if (!['choose-background', 'recent-project'].includes(command.id) || backgroundFromCommand(commandText)) closeCommandPalette();
   command.run(commandText);
+}
+
+function commandCanApply(command, element) {
+  return !command.canApply || command.canApply(element);
 }
 
 function addTextCommand(query) {
@@ -747,7 +751,7 @@ function setGuideGridCommand(query) {
 function setSelectedDimension(field, query, label) {
   const value = numberFromCommand(query) ?? Number(prompt(`${label} percentage`, selected(current())?.[field] ?? 50));
   if (!Number.isFinite(value)) return;
-  patchSelected((el) => setElementSize(el, { [field]: value, source: field }));
+  patchSelected((el) => { if (el.type !== 'text') setElementSize(el, { [field]: value, source: field }); });
 }
 
 function setSelectedSize(query) {
@@ -768,8 +772,8 @@ function setSelectedNumber(field, query, label, min, max, canApply: any = () => 
 }
 
 function setSelectedColor(query) {
-  const value = query.match(/#[0-9a-f]{3,6}\b/i)?.[0] || prompt('Color hex', selected(current())?.color || '#111827');
-  if (!/^#[0-9a-f]{3}(?:[0-9a-f]{3})?$/i.test(value || '')) return;
+  const value = query.match(/#[0-9a-f]{3}(?:[0-9a-f]{3})?\b/i)?.[0] || prompt('Color hex', selected(current())?.color || '#111827');
+  if (!isHexColor(value)) return;
   patchSelected((el) => el.color = value);
 }
 

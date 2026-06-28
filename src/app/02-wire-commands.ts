@@ -308,22 +308,43 @@ function wire() {
   els.projectName.onchange = () => renameCurrentProject(els.projectName.value);
   els.textControl.addEventListener('pointerdown', () => textInspectorAutoFocused = false);
   els.textControl.addEventListener('keydown', (event) => { if (event.key !== 'Delete' && event.key !== 'Del') textInspectorAutoFocused = false; });
-  ['text', 'x', 'y', 'rotation', 'fontSize', 'color'].forEach((name) => {
+  ['text', 'x', 'y', 'rotation'].forEach((name) => {
     const control = $(`${name}Control`);
     control.oninput = () => patchSelected((el) => {
-      const value = name === 'fontSize' ? integerFontSize(control.value) : control.type === 'number' || control.type === 'range' ? Number(control.value) : control.value;
+      const value = control.type === 'number' || control.type === 'range' ? Number(control.value) : control.value;
       el[name] = value;
       if (name === 'rotation') els.rotationNumberControl.value = value;
-      if (name === 'fontSize') syncFontSizeControls(value);
     });
   });
+  els.colorControl.oninput = () => setSelectedElementColor(els.colorControl.value);
+  els.colorControl.onchange = () => { if (selected(current())?.type === 'text') commitLiveTextStyleEdit('setTextColor'); };
   els.fontControl.onfocus = () => openFontResults();
   els.fontControl.oninput = () => handleFontInput();
   els.fontControl.onkeydown = handleFontInputKeydown;
   els.fontControl.onblur = () => setTimeout(() => { if (document.activeElement !== els.fontControl && !els.fontResults.contains(document.activeElement)) closeFontResults(); }, 0);
   els.rotationNumberControl.oninput = () => patchSelected((el) => { el.rotation = clamp(Number(els.rotationNumberControl.value), -180, 180, 0); els.rotationControl.value = el.rotation; });
-  els.fontSizeSliderControl.oninput = () => patchSelected((el) => { el.fontSize = integerFontSize(els.fontSizeSliderControl.value); syncFontSizeControls(el.fontSize); });
-  document.querySelectorAll('[data-color]').forEach((button: any) => button.addEventListener('click', () => patchSelected((el) => { el.color = button.dataset.color; els.colorControl.value = el.color; })));
+  els.fontSizeControl.oninput = () => setSelectedTextFontSize(els.fontSizeControl.value);
+  els.fontSizeControl.onchange = () => fitTextElementToRenderedContent(selectedId, { commit: true, operation: 'setTextFontSize' });
+  els.fontSizeSliderControl.oninput = () => setSelectedTextFontSize(els.fontSizeSliderControl.value);
+  els.fontSizeSliderControl.onchange = () => fitTextElementToRenderedContent(selectedId, { commit: true, operation: 'setTextFontSize' });
+  els.textBackgroundOpacitySliderControl.oninput = () => setSelectedTextBackgroundOpacity(els.textBackgroundOpacitySliderControl.value);
+  els.textBackgroundOpacitySliderControl.onchange = () => commitLiveTextStyleEdit('setTextBackgroundOpacity');
+  els.textBackgroundOpacityControl.oninput = () => setSelectedTextBackgroundOpacity(els.textBackgroundOpacityControl.value);
+  els.textBackgroundOpacityControl.onchange = () => commitLiveTextStyleEdit('setTextBackgroundOpacity');
+  els.textBackgroundColorControl.oninput = () => setSelectedTextBackgroundColor(els.textBackgroundColorControl.value);
+  els.textBackgroundColorControl.onchange = () => commitLiveTextStyleEdit('setTextBackgroundColor');
+  els.borderControl.onchange = () => { setSelectedTextBorderEnabled(els.borderControl.checked); fitTextElementToRenderedContent(selectedId, { commit: true, operation: 'setTextBorderEnabled' }); };
+  els.borderPaddingSliderControl.oninput = () => setSelectedTextBorderPadding(els.borderPaddingSliderControl.value);
+  els.borderPaddingSliderControl.onchange = () => fitTextElementToRenderedContent(selectedId, { commit: true, operation: 'setTextBorderPadding' });
+  els.borderPaddingControl.oninput = () => setSelectedTextBorderPadding(els.borderPaddingControl.value);
+  els.borderPaddingControl.onchange = () => fitTextElementToRenderedContent(selectedId, { commit: true, operation: 'setTextBorderPadding' });
+  els.borderRadiusSliderControl.oninput = () => setSelectedTextBorderRadius(els.borderRadiusSliderControl.value);
+  els.borderRadiusSliderControl.onchange = () => commitLiveTextStyleEdit('setTextBorderRadius');
+  els.borderRadiusControl.oninput = () => setSelectedTextBorderRadius(els.borderRadiusControl.value);
+  els.borderRadiusControl.onchange = () => commitLiveTextStyleEdit('setTextBorderRadius');
+  els.borderColorControl.oninput = () => setSelectedTextBorderColor(els.borderColorControl.value);
+  els.borderColorControl.onchange = () => commitLiveTextStyleEdit('setTextBorderColor');
+  document.querySelectorAll('[data-color]').forEach((button: any) => button.addEventListener('click', () => setSelectedElementColor(button.dataset.color, true)));
   ['cropTop', 'cropBottom'].forEach((name) => {
     const control = $(`${name}Control`);
     control.oninput = () => patchSelected((el) => setImageCropControl(el, name, Number(control.value)));
@@ -358,6 +379,87 @@ function wire() {
   });
 }
 
+function setSelectedElementColor(value, commitText = false) {
+  const element = selected(current());
+  if (element?.type === 'text') {
+    updateSelectedTextStyleLive((el) => { el.color = value; els.colorControl.value = el.color; });
+    if (commitText) commitLiveTextStyleEdit('setTextColor');
+    return;
+  }
+  patchSelected((el) => { el.color = value; els.colorControl.value = el.color; });
+}
+
+function setSelectedTextFontSize(value) {
+  const fontSize = integerFontSize(value);
+  const element = updateSelectedTextStyleLive((el) => {
+    el.fontSize = fontSize;
+    el.w = 100;
+    syncFontSizeControls(fontSize);
+  });
+  if (element) fitTextElementToRenderedContent(element.id);
+}
+
+function setSelectedTextFontSizeCommand(query) {
+  const currentElement = selected(current());
+  if (currentElement?.type !== 'text') return;
+  const value = numberFromCommand(query) ?? Number(prompt('Font size', currentElement.fontSize ?? TEXT_DEFAULT.fontSize));
+  if (Number.isFinite(value)) {
+    setSelectedTextFontSize(value);
+    fitTextElementToRenderedContent(currentElement.id, { commit: true, operation: 'setTextFontSize' });
+  }
+}
+
+function setSelectedTextBackgroundOpacity(value) {
+  updateSelectedTextStyleLive((el) => {
+    el.backgroundOpacity = textBackgroundOpacity({ backgroundOpacity: value });
+    syncTextBackgroundControls(el);
+  });
+}
+
+function setSelectedTextBackgroundColor(value) {
+  updateSelectedTextStyleLive((el) => {
+    el.backgroundColor = normalizeHexColor(value, TEXT_BACKGROUND_DEFAULT_COLOR);
+    syncTextBackgroundControls(el);
+  });
+}
+
+function setSelectedTextBorderEnabled(enabled) {
+  updateSelectedTextStyleLive((el) => {
+    if (!enabled) el.border = '';
+    else {
+      el.borderColor = textBorderColor(el);
+      el.borderRadius = textBorderRadius(el);
+      el.borderPadding = textBorderPadding(el);
+      el.border = textBorderCss(el);
+    }
+    syncTextBorderControls(el);
+  });
+}
+
+function setSelectedTextBorderPadding(value) {
+  const element = updateSelectedTextStyleLive((el) => {
+    el.borderPadding = textBorderPadding({ borderPadding: value });
+    syncTextBorderControls(el);
+  });
+  if (element) fitTextElementToRenderedContent(element.id);
+}
+
+function setSelectedTextBorderRadius(value) {
+  updateSelectedTextStyleLive((el) => {
+    el.borderRadius = textBorderRadius({ borderRadius: value });
+    if (hasTextBorder(el)) el.border = textBorderCss(el);
+    syncTextBorderControls(el);
+  });
+}
+
+function setSelectedTextBorderColor(value) {
+  updateSelectedTextStyleLive((el) => {
+    el.borderColor = normalizeHexColor(value);
+    if (hasTextBorder(el)) el.border = textBorderCss(el);
+    syncTextBorderControls(el);
+  });
+}
+
 const COMMANDS = [
   { id: 'add-text', title: 'Add text', detail: 'Create a Markdown text box on the current page', shortcut: 'text', keywords: 'text copy headline title', run: (query) => addTextCommand(query) },
   { id: 'add-shape', title: 'Add shape', detail: 'Create a simple colored shape', shortcut: 'shape', keywords: 'shape rectangle box', run: () => addElement({ ...SHAPE_DEFAULT }) },
@@ -369,13 +471,13 @@ const COMMANDS = [
   { id: 'set-guide-grid', title: 'Set canvas guide grid', detail: 'Type “/grid”, “/grid 3”, “/grid 0”, or “/grid off” for 0–5 split lines', shortcut: 'grid 2', keywords: 'grid guide guides lines thirds rule layout canvas show hide', run: (query) => setGuideGridCommand(query) },
   { id: 'choose-background', title: 'Choose page background', detail: 'Type “/background blank” or “/background aurora-grid”; omit the argument for a live preview picker', shortcut: 'background aurora-grid', keywords: 'background bg page blank aurora grid theme canvas', run: (query) => chooseBackgroundCommand(query) },
   { id: 'background-settings', title: 'Background settings', detail: 'Open the right panel to move and resize the background image', shortcut: 'background-settings', keywords: 'background bg settings image move resize zoom fill canvas panel', opensSurface: true, run: openBackgroundSettings },
-  { id: 'set-width', title: 'Set selected width', detail: 'Type “/width 50” or pick this action', shortcut: 'width 50', keywords: 'width w resize size', needsSelection: true, run: (query) => setSelectedDimension('w', query, 'Width') },
-  { id: 'set-height', title: 'Set selected height', detail: 'Type “/height 20” or pick this action', shortcut: 'height 20', keywords: 'height h resize size', needsSelection: true, run: (query) => setSelectedDimension('h', query, 'Height') },
-  { id: 'set-size', title: 'Set selected size', detail: 'Type “/size 40 20” for width and height', shortcut: 'size 40 20', keywords: 'size resize dimensions width height', needsSelection: true, run: (query) => setSelectedSize(query) },
+  { id: 'set-width', title: 'Set selected width', detail: 'Type “/width 50” for selected shapes or images', shortcut: 'width 50', keywords: 'width w resize size shape image', needsSelection: true, canApply: (element) => element?.type !== 'text', run: (query) => setSelectedDimension('w', query, 'Width') },
+  { id: 'set-height', title: 'Set selected height', detail: 'Type “/height 20” for selected shapes or images', shortcut: 'height 20', keywords: 'height h resize size shape image', needsSelection: true, canApply: (element) => element?.type !== 'text', run: (query) => setSelectedDimension('h', query, 'Height') },
+  { id: 'set-size', title: 'Set selected size', detail: 'Type “/size 40 20” for selected shapes or images', shortcut: 'size 40 20', keywords: 'size resize dimensions width height shape image', needsSelection: true, canApply: (element) => element?.type !== 'text', run: (query) => setSelectedSize(query) },
   { id: 'set-x', title: 'Set selected X position', detail: 'Type “/x 50” to move horizontally', shortcut: 'x 50', keywords: 'x horizontal left right position move', needsSelection: true, run: (query) => setSelectedNumber('x', query, 'X position', 0, 100) },
   { id: 'set-y', title: 'Set selected Y position', detail: 'Type “/y 50” to move vertically', shortcut: 'y 50', keywords: 'y vertical top bottom position move', needsSelection: true, run: (query) => setSelectedNumber('y', query, 'Y position', 0, 100) },
   { id: 'set-rotation', title: 'Rotate selected element', detail: 'Type “/rotate 15” to set degrees', shortcut: 'rotate 15', keywords: 'rotate rotation angle degrees', needsSelection: true, run: (query) => setSelectedNumber('rotation', query, 'Rotation degrees', -180, 180) },
-  { id: 'set-font-size', title: 'Set selected font size', detail: 'Type “/font 64” for selected text', shortcut: 'font 64', keywords: 'font size text typography', needsSelection: true, run: (query) => setSelectedNumber('fontSize', query, 'Font size', TEXT_FONT_SIZE_MIN, TEXT_FONT_SIZE_MAX, (el) => el.type === 'text') },
+  { id: 'set-font-size', title: 'Set selected font size', detail: 'Type “/font 64” for selected text', shortcut: 'font 64', keywords: 'font size text typography', needsSelection: true, canApply: (element) => element?.type === 'text', run: (query) => setSelectedTextFontSizeCommand(query) },
   { id: 'set-color', title: 'Set selected color', detail: 'Type “/color #74a6ff”', shortcut: 'color #74a6ff', keywords: 'color fill text shape', needsSelection: true, run: (query) => setSelectedColor(query) },
   { id: 'send-back', title: 'Send selected backward', detail: 'Move the selected element behind others', shortcut: 'back', keywords: 'back backward behind layer z index', needsSelection: true, run: () => $('backBtn').click() },
   { id: 'bring-front', title: 'Bring selected forward', detail: 'Move the selected element in front of others', shortcut: 'front', keywords: 'front forward ahead layer z index', needsSelection: true, run: () => $('frontBtn').click() },
